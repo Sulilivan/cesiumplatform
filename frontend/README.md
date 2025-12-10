@@ -19,12 +19,12 @@ rayansullivan/cesiumapartment:latest
 2. **运行容器**
 
    ```sh
-   docker run -p 5173:5173 rayansullivan/cesiumapartment:latest
+   docker run -p 3000:3000 rayansullivan/cesiumapartment:latest
    ```
 
 3. **访问应用**
 
-   打开浏览器访问 [http://localhost:5173](http://localhost:5173)
+   打开浏览器访问 [http://localhost:3000](http://localhost:3000)
 
 ## 功能简介
 
@@ -52,7 +52,7 @@ npm run build
 ## 说明
 
 - 镜像已内置所有依赖和静态资源，无需额外配置。
-- 默认使用 `serve` 启动生产环境静态服务。
+- 默认使用 `serve` 启动生产环境静态服务，监听 3000 端口。
 
 ---
 

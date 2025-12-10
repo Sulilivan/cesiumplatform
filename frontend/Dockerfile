@@ -13,12 +13,14 @@ RUN npm install
 # 复制所有前端代码
 COPY . .
 
-# 构建静态资源（如需生产环境部署）
+# 构建静态资源
 RUN npm run build
 
-# 启动静态服务器（如需预览生产包）
-# 可选：安装 serve
+# 安装 serve
 RUN npm install -g serve
 
-# 默认启动开发服务器（如需开发环境）
-CMD ["serve", "-s", "dist"]
+# 暴露端口（关键：这会让 Docker Desktop 自动识别端口）
+EXPOSE 3000
+
+# 启动命令：强制指定端口 3000，并指向 dist 目录
+CMD ["serve", "-s", "dist", "-l", "3000"]
