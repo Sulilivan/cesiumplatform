@@ -24,7 +24,7 @@
     </label>
   </div>
 
-  <div id="mouse-coords" style="position:fixed;left:10px;bottom:10px;z-index:1000;background:rgba(0,0,0,0.6);color:#fff;padding:4px 10px;border-radius:4px;font-size:14px;pointer-events:none;">
+  <div id="mouse-coords" style="position:fixed;left:10px;bottom:30px;z-index:1000;background:rgba(0,0,0,0.6);color:#fff;padding:4px 10px;border-radius:4px;font-size:14px;pointer-events:none;">
     坐标：--
   </div>
 </template>
@@ -55,6 +55,10 @@ onMounted(async () => {
     terrain: Cesium.Terrain.fromWorldTerrain({requestVertexNormals: true}), 
     shadows: settings.shadows,
   })
+
+  // 提高阴影质量
+  viewer.shadowMap.size = 4096; // 提高阴影分辨率
+  viewer.shadowMap.maximumDistance = 5000; // 单位：米，根据场景调整
 
   // 监听并实时更新 Cesium 设置
   watch(() => settings.lighting, (val) => {
@@ -138,7 +142,7 @@ onMounted(async () => {
   // 开启光照、阴影、HDR 和抗锯齿
   viewer.scene.globe.enableLighting = true;
   viewer.terrainShadows = Cesium.ShadowMode.ENABLED;
-  viewer.scene.msaaSamples = 4;
+  viewer.scene.msaaSamples = 16;
   viewer.scene.postProcessStages.fxaa.enabled = true;
 
   // 开启HDR
@@ -177,7 +181,7 @@ onMounted(async () => {
       polygonHierarchy: new Cesium.PolygonHierarchy(
         Cesium.Cartesian3.fromDegreesArray(waterKeyPoints)
       ),
-      height:1660,          // 水面高度 (米)，设在模型下方一点
+      height:1688,          // 水面高度 (米)，设在模型下方一点
       extrudedHeight: 950,  // 水体底部高度
       vertexFormat: Cesium.EllipsoidSurfaceAppearance.VERTEX_FORMAT
     });
