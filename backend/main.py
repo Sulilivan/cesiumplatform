@@ -10,11 +10,11 @@ models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI(title="智慧水利监测平台 API")
 
-# 配置 CORS (允许前端 Vue 访问)
+# 配置 CORS
+# 简化 CORS，确保开发环境下绝对不报跨域错
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 生产环境应改为前端具体地址
-    allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -248,7 +248,7 @@ def get_latest_measurement(point_code: str, current_user: models.User = Depends(
     )
 
 @app.post("/alerts/check", response_model=list[schemas.AlertInfo])
-def check_alerts(configs: list[schemas.AlertConfig], db: Session = Depends(get_db)):
+def check_alerts(configs: list[schemas.AlertConfig], current_user: models.User = Depends(auth.get_current_active_user), db: Session = Depends(get_db)):
     alerts = []
     
     for config in configs:
@@ -353,29 +353,33 @@ def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
 @app.post("/auth/login", response_model=schemas.Token)
 def login(user_credentials: schemas.UserLogin, db: Session = Depends(get_db)):
-    user = auth.authenticate_user(db, user_credentials.username, user_credentials.password)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户名或密码错误",
-            headers={"WWW-Authenticate": "Bearer"},
+    try:
+        user = crud.get_user_by_username(db, username=user_credentials.username)
+        
+        # 使用截断后的密码进行验证
+        if not user or not auth.verify_password(user_credentials.password[:72], user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="用户名或密码错误",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = auth.create_access_token(
+            data={"sub": user.username, "role": user.role},
+            expires_delta=access_token_expires
         )
-    access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = auth.create_access_token(
-        data={"sub": user.username, "role": user.role}, expires_delta=access_token_expires
-    )
-    return schemas.Token(
-        access_token=access_token,
-        token_type="bearer",
-        user=schemas.UserResponse(
-            id=user.id,
-            username=user.username,
-            email=user.email,
-            role=user.role,
-            is_active=user.is_active,
-            created_at=user.created_at
-        )
-    )
+        return {"access_token": access_token, "token_type": "bearer", "user": user}
+    except Exception as e:
+        # 捕获所有异常并打印到控制台，避免直接 500 导致隐藏错误原因
+        print(f"Login logic error: {str(e)}")
+        # Log to file for debugging
+        try:
+            with open("login_error.log", "a", encoding="utf-8") as f:
+                f.write(f"Error: {str(e)}\n")
+        except:
+            pass
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/auth/me", response_model=schemas.UserResponse)
 def read_users_me(current_user: models.User = Depends(auth.get_current_active_user)):

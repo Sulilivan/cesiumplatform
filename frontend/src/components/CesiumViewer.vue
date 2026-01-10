@@ -22,6 +22,12 @@
       <span class="custom-checkbox"></span>
       <span class="label-text">抗锯齿 (MSAA)</span>
     </label>
+
+    <div class="divider"></div>
+    
+    <button @click="handleLogout" class="logout-btn">
+      退出登录
+    </button>
   </div>
 
   <div id="mouse-coords" style="position:fixed;left:10px;bottom:30px;z-index:1000;background:rgba(0,0,0,0.6);color:#fff;padding:4px 10px;border-radius:4px;font-size:14px;pointer-events:none;">
@@ -31,9 +37,19 @@
 
 <script setup>
 import { onMounted, reactive, watch } from 'vue'
+import { useRouter } from 'vue-router' // 引入 useRouter
 import * as Cesium from 'cesium'
+import { logout } from '@/utils/api' // 引入 logout 方法
 
 window.CESIUM_BASE_URL = import.meta.env.VITE_CESIUM_BASE_URL
+
+const router = useRouter() // 获取 router 实例
+
+// 退出登录函数
+const handleLogout = () => {
+  logout()
+  router.push('/login')
+}
 
 // 响应式状态管理
 const settings = reactive({
@@ -350,5 +366,33 @@ onMounted(async () => {
   height: 8px;
   border: solid white;
   border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.label-text {
+  font-size: 14px;
+  color: #f0f0f0;
+}
+
+.divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.2);
+  margin: 10px 0;
+}
+
+.logout-btn {
+  background: rgba(255, 77, 79, 0.8);
+  border: none;
+  border-radius: 4px;
+  color: white;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.2s;
+  width: 100%;
+}
+
+.logout-btn:hover {
+  background: rgba(255, 77, 79, 1);
 }
 </style>

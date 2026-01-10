@@ -1,9 +1,9 @@
 <template>
-  <CesiumViewer />
+  <router-view />
 </template>
 
 <script setup>
-import CesiumViewer from './components/CesiumViewer.vue'
+// import CesiumViewer from './components/CesiumViewer.vue' // 不再需要直接引入
 </script>
 
 <style>
