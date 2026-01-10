@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from . import models, schemas, auth
+from datetime import datetime
 
 def get_user(db: Session, user_id: int) -> Optional[models.User]:
     return db.query(models.User).filter(models.User.id == user_id).first()
@@ -97,3 +98,88 @@ def get_all_latest_measurements(db: Session) -> List[dict]:
                 'device_type': point.device_type
             })
     return result
+
+def get_inverted_plumb_data(db: Session, point_code: str, skip: int = 0, limit: int = 100) -> List[models.InvertedPlumbData]:
+    return db.query(models.InvertedPlumbData).filter(
+        models.InvertedPlumbData.point_code == point_code
+    ).order_by(models.InvertedPlumbData.time.desc()).offset(skip).limit(limit).all()
+
+def create_inverted_plumb_data(db: Session, data: schemas.InvertedPlumbDataCreate) -> models.InvertedPlumbData:
+    db_data = models.InvertedPlumbData(
+        point_code=data.point_code,
+        left_right_value=data.left_right_value,
+        up_down_value=data.up_down_value,
+        time=data.time or datetime.now()
+    )
+    db.add(db_data)
+    db.commit()
+    db.refresh(db_data)
+    return db_data
+
+def get_latest_inverted_plumb(db: Session, point_code: str) -> Optional[models.InvertedPlumbData]:
+    return db.query(models.InvertedPlumbData).filter(
+        models.InvertedPlumbData.point_code == point_code
+    ).order_by(models.InvertedPlumbData.time.desc()).first()
+
+def get_static_level_data(db: Session, point_code: str, skip: int = 0, limit: int = 100) -> List[models.StaticLevelData]:
+    return db.query(models.StaticLevelData).filter(
+        models.StaticLevelData.point_code == point_code
+    ).order_by(models.StaticLevelData.time.desc()).offset(skip).limit(limit).all()
+
+def create_static_level_data(db: Session, data: schemas.StaticLevelDataCreate) -> models.StaticLevelData:
+    db_data = models.StaticLevelData(
+        point_code=data.point_code,
+        value=data.value,
+        time=data.time or datetime.now()
+    )
+    db.add(db_data)
+    db.commit()
+    db.refresh(db_data)
+    return db_data
+
+def get_latest_static_level(db: Session, point_code: str) -> Optional[models.StaticLevelData]:
+    return db.query(models.StaticLevelData).filter(
+        models.StaticLevelData.point_code == point_code
+    ).order_by(models.StaticLevelData.time.desc()).first()
+
+def get_tension_line_data(db: Session, point_code: str, skip: int = 0, limit: int = 100) -> List[models.TensionLineData]:
+    return db.query(models.TensionLineData).filter(
+        models.TensionLineData.point_code == point_code
+    ).order_by(models.TensionLineData.time.desc()).offset(skip).limit(limit).all()
+
+def create_tension_line_data(db: Session, data: schemas.TensionLineDataCreate) -> models.TensionLineData:
+    db_data = models.TensionLineData(
+        point_code=data.point_code,
+        value=data.value,
+        time=data.time or datetime.now()
+    )
+    db.add(db_data)
+    db.commit()
+    db.refresh(db_data)
+    return db_data
+
+def get_latest_tension_line(db: Session, point_code: str) -> Optional[models.TensionLineData]:
+    return db.query(models.TensionLineData).filter(
+        models.TensionLineData.point_code == point_code
+    ).order_by(models.TensionLineData.time.desc()).first()
+
+def get_water_level_data(db: Session, point_code: str, skip: int = 0, limit: int = 100) -> List[models.WaterLevelData]:
+    return db.query(models.WaterLevelData).filter(
+        models.WaterLevelData.point_code == point_code
+    ).order_by(models.WaterLevelData.time.desc()).offset(skip).limit(limit).all()
+
+def create_water_level_data(db: Session, data: schemas.WaterLevelDataCreate) -> models.WaterLevelData:
+    db_data = models.WaterLevelData(
+        point_code=data.point_code,
+        value=data.value,
+        time=data.time or datetime.now()
+    )
+    db.add(db_data)
+    db.commit()
+    db.refresh(db_data)
+    return db_data
+
+def get_latest_water_level(db: Session, point_code: str) -> Optional[models.WaterLevelData]:
+    return db.query(models.WaterLevelData).filter(
+        models.WaterLevelData.point_code == point_code
+    ).order_by(models.WaterLevelData.time.desc()).first()

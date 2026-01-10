@@ -1,5 +1,5 @@
 <template>
-  <div class="sidebar-right">
+  <div class="sidebar-right" :class="{ 'collapsed': !pointCode }">
     <div class="panel-header">
       <div class="title">{{ pointName || '测点详情' }}</div>
     </div>
@@ -201,8 +201,13 @@ watch(() => props.pointCode, (newCode) => {
   display: flex;
   flex-direction: column;
   z-index: 100;
-  box-shadow: 0 0 20px rgba(0, 160, 233, 0.2) inset;
+  box-shadow: 0 0 20px rgba(0, 160, 233, 0.2) inset;  transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
 }
+
+.sidebar-right.collapsed {
+  transform: translateX(340px); /* 移出屏幕 */
+  opacity: 0;
+  pointer-events: none;}
 
 .panel-header {
   height: 40px;

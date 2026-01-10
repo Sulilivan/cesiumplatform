@@ -1,10 +1,10 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 import datetime
 from typing import List, Optional
 
 class UserBase(BaseModel):
     username: str
-    email: str
+    email: EmailStr
 
 class UserCreate(UserBase):
     password: str
@@ -108,3 +108,57 @@ class MeasurementCompare(BaseModel):
     change_value: float
     change_percent: float
     time: datetime.datetime
+
+class InvertedPlumbDataCreate(BaseModel):
+    point_code: str
+    left_right_value: float
+    up_down_value: float
+    time: Optional[datetime.datetime] = None
+
+class InvertedPlumbDataOut(BaseModel):
+    id: int
+    point_code: str
+    left_right_value: float
+    up_down_value: float
+    time: datetime.datetime
+    class Config:
+        from_attributes = True
+
+class StaticLevelDataCreate(BaseModel):
+    point_code: str
+    value: float
+    time: Optional[datetime.datetime] = None
+
+class StaticLevelDataOut(BaseModel):
+    id: int
+    point_code: str
+    value: float
+    time: datetime.datetime
+    class Config:
+        from_attributes = True
+
+class TensionLineDataCreate(BaseModel):
+    point_code: str
+    value: float
+    time: Optional[datetime.datetime] = None
+
+class TensionLineDataOut(BaseModel):
+    id: int
+    point_code: str
+    value: float
+    time: datetime.datetime
+    class Config:
+        from_attributes = True
+
+class WaterLevelDataCreate(BaseModel):
+    point_code: str
+    value: float
+    time: Optional[datetime.datetime] = None
+
+class WaterLevelDataOut(BaseModel):
+    id: int
+    point_code: str
+    value: float
+    time: datetime.datetime
+    class Config:
+        from_attributes = True

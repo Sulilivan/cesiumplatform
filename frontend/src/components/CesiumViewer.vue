@@ -39,6 +39,16 @@ const updateSettings = (newSettings) => {
 }
 
 const flyToPoint = (point) => {
+  // 如果 point 为 null，表示取消选中
+  if (!point) {
+    selectedPoint.value = null
+    // 移除之前的标记
+    if (viewerRef.value) {
+        viewerRef.value.entities.removeAll()
+    }
+    return
+  }
+
   selectedPoint.value = point
   if (viewerRef.value && point.longitude && point.latitude) {
     // 添加一个实体标记
@@ -61,6 +71,8 @@ const flyToPoint = (point) => {
         }
     })
 
+    // 不再自动飞行到测点位置
+    /*
     viewerRef.value.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(
         point.longitude, 
@@ -74,6 +86,7 @@ const flyToPoint = (point) => {
       },
       duration: 2
     })
+    */
   }
 }
 

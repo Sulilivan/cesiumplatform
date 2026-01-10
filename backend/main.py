@@ -10,11 +10,11 @@ models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI(title="智慧水利监测平台 API")
 
-# 配置 CORS
-# 简化 CORS，确保开发环境下绝对不报跨域错
+# 配置 CORS (允许前端 Vue 访问)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # 生产环境应改为前端具体地址
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -25,6 +25,24 @@ def get_db():
         yield db
     finally:
         db.close()
+
+@app.get("/")
+def read_root():
+    return {
+        "message": "智慧水利监测平台 API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "endpoints": {
+            "points": "/points/",
+            "measurements": "/measurements/{point_code}",
+            "inverted_plumb": "/inverted-plumb/{point_code}",
+            "static_level": "/static-level/{point_code}",
+            "tension_line": "/tension-line/{point_code}",
+            "water_level": "/water-level/{point_code}",
+            "auth": "/auth/login",
+            "docs": "/docs"
+        }
+    }
 
 # 1. 获取所有测点 (用于 Cesium 打点) [cite: 21]
 @app.get("/points/", response_model=list[schemas.MonitorPointOut])
@@ -248,7 +266,7 @@ def get_latest_measurement(point_code: str, current_user: models.User = Depends(
     )
 
 @app.post("/alerts/check", response_model=list[schemas.AlertInfo])
-def check_alerts(configs: list[schemas.AlertConfig], current_user: models.User = Depends(auth.get_current_active_user), db: Session = Depends(get_db)):
+def check_alerts(configs: list[schemas.AlertConfig], db: Session = Depends(get_db)):
     alerts = []
     
     for config in configs:
@@ -353,33 +371,29 @@ def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
 @app.post("/auth/login", response_model=schemas.Token)
 def login(user_credentials: schemas.UserLogin, db: Session = Depends(get_db)):
-    try:
-        user = crud.get_user_by_username(db, username=user_credentials.username)
-        
-        # 使用截断后的密码进行验证
-        if not user or not auth.verify_password(user_credentials.password[:72], user.hashed_password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="用户名或密码错误",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        
-        access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
-        access_token = auth.create_access_token(
-            data={"sub": user.username, "role": user.role},
-            expires_delta=access_token_expires
+    user = auth.authenticate_user(db, user_credentials.username, user_credentials.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="用户名或密码错误",
+            headers={"WWW-Authenticate": "Bearer"},
         )
-        return {"access_token": access_token, "token_type": "bearer", "user": user}
-    except Exception as e:
-        # 捕获所有异常并打印到控制台，避免直接 500 导致隐藏错误原因
-        print(f"Login logic error: {str(e)}")
-        # Log to file for debugging
-        try:
-            with open("login_error.log", "a", encoding="utf-8") as f:
-                f.write(f"Error: {str(e)}\n")
-        except:
-            pass
-        raise HTTPException(status_code=400, detail=str(e))
+    access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = auth.create_access_token(
+        data={"sub": user.username, "role": user.role}, expires_delta=access_token_expires
+    )
+    return schemas.Token(
+        access_token=access_token,
+        token_type="bearer",
+        user=schemas.UserResponse(
+            id=user.id,
+            username=user.username,
+            email=user.email,
+            role=user.role,
+            is_active=user.is_active,
+            created_at=user.created_at
+        )
+    )
 
 @app.get("/auth/me", response_model=schemas.UserResponse)
 def read_users_me(current_user: models.User = Depends(auth.get_current_active_user)):
@@ -441,3 +455,131 @@ def delete_user(
     if not success:
         raise HTTPException(status_code=404, detail="用户不存在")
     return {"message": "用户删除成功"}
+
+@app.get("/inverted-plumb/{point_code}", response_model=list[schemas.InvertedPlumbDataOut])
+def read_inverted_plumb_data(
+    point_code: str,
+    skip: int = 0,
+    limit: int = 100,
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    return crud.get_inverted_plumb_data(db, point_code, skip, limit)
+
+@app.post("/inverted-plumb/", response_model=schemas.InvertedPlumbDataOut)
+def create_inverted_plumb_data(
+    data: schemas.InvertedPlumbDataCreate,
+    current_user: models.User = Depends(auth.get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    point = db.query(models.MonitorPoint).filter(models.MonitorPoint.point_code == data.point_code).first()
+    if not point:
+        raise HTTPException(status_code=404, detail="测点不存在")
+    return crud.create_inverted_plumb_data(db, data)
+
+@app.get("/inverted-plumb/{point_code}/latest", response_model=schemas.InvertedPlumbDataOut)
+def read_latest_inverted_plumb(
+    point_code: str,
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    data = crud.get_latest_inverted_plumb(db, point_code)
+    if not data:
+        raise HTTPException(status_code=404, detail="测点无数据")
+    return data
+
+@app.get("/static-level/{point_code}", response_model=list[schemas.StaticLevelDataOut])
+def read_static_level_data(
+    point_code: str,
+    skip: int = 0,
+    limit: int = 100,
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    return crud.get_static_level_data(db, point_code, skip, limit)
+
+@app.post("/static-level/", response_model=schemas.StaticLevelDataOut)
+def create_static_level_data(
+    data: schemas.StaticLevelDataCreate,
+    current_user: models.User = Depends(auth.get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    point = db.query(models.MonitorPoint).filter(models.MonitorPoint.point_code == data.point_code).first()
+    if not point:
+        raise HTTPException(status_code=404, detail="测点不存在")
+    return crud.create_static_level_data(db, data)
+
+@app.get("/static-level/{point_code}/latest", response_model=schemas.StaticLevelDataOut)
+def read_latest_static_level(
+    point_code: str,
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    data = crud.get_latest_static_level(db, point_code)
+    if not data:
+        raise HTTPException(status_code=404, detail="测点无数据")
+    return data
+
+@app.get("/tension-line/{point_code}", response_model=list[schemas.TensionLineDataOut])
+def read_tension_line_data(
+    point_code: str,
+    skip: int = 0,
+    limit: int = 100,
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    return crud.get_tension_line_data(db, point_code, skip, limit)
+
+@app.post("/tension-line/", response_model=schemas.TensionLineDataOut)
+def create_tension_line_data(
+    data: schemas.TensionLineDataCreate,
+    current_user: models.User = Depends(auth.get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    point = db.query(models.MonitorPoint).filter(models.MonitorPoint.point_code == data.point_code).first()
+    if not point:
+        raise HTTPException(status_code=404, detail="测点不存在")
+    return crud.create_tension_line_data(db, data)
+
+@app.get("/tension-line/{point_code}/latest", response_model=schemas.TensionLineDataOut)
+def read_latest_tension_line(
+    point_code: str,
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    data = crud.get_latest_tension_line(db, point_code)
+    if not data:
+        raise HTTPException(status_code=404, detail="测点无数据")
+    return data
+
+@app.get("/water-level/{point_code}", response_model=list[schemas.WaterLevelDataOut])
+def read_water_level_data(
+    point_code: str,
+    skip: int = 0,
+    limit: int = 100,
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    return crud.get_water_level_data(db, point_code, skip, limit)
+
+@app.post("/water-level/", response_model=schemas.WaterLevelDataOut)
+def create_water_level_data(
+    data: schemas.WaterLevelDataCreate,
+    current_user: models.User = Depends(auth.get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    point = db.query(models.MonitorPoint).filter(models.MonitorPoint.point_code == data.point_code).first()
+    if not point:
+        raise HTTPException(status_code=404, detail="测点不存在")
+    return crud.create_water_level_data(db, data)
+
+@app.get("/water-level/{point_code}/latest", response_model=schemas.WaterLevelDataOut)
+def read_latest_water_level(
+    point_code: str,
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    data = crud.get_latest_water_level(db, point_code)
+    if not data:
+        raise HTTPException(status_code=404, detail="测点无数据")
+    return data
