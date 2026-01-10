@@ -1,13 +1,23 @@
 <template>
   <div id="cesiumContainer" style="width: 100vw; height: 100vh;"></div>
   
+  <div 
+    v-if="selectedPoint && infoBoxVisible" 
+    class="custom-infobox"
+    :style="{ left: infoBoxPosition.x + 'px', top: infoBoxPosition.y + 'px' }"
+  >
+    <div class="infobox-title">{{ selectedPoint.point_name }}</div>
+    <div class="infobox-content">编号: {{ selectedPoint.point_code }}</div>
+    <div class="infobox-arrow"></div>
+  </div>
+
   <DashboardLayer 
     :settings="settings"
     :coords="mouseCoords"
     :currentPointCode="selectedPoint?.point_code"
     :currentPointName="selectedPoint?.point_name"
     @update:settings="updateSettings"
-    @select-point="flyToPoint"
+    @select-point="handleSidebarSelect"
   />
 </template>
 
@@ -15,6 +25,7 @@
 import { onMounted, reactive, watch, ref } from 'vue' // 引入 ref
 import { useRouter } from 'vue-router' // 引入 useRouter
 import * as Cesium from 'cesium'
+import api from '@/utils/api' // 完整引入 api
 import { logout } from '@/utils/api' // 引入 logout 方法
 import DashboardLayer from './DashboardLayer.vue' // 引入仪表盘
 
@@ -23,9 +34,19 @@ window.CESIUM_BASE_URL = import.meta.env.VITE_CESIUM_BASE_URL
 const router = useRouter() // 获取 router 实例
 
 const viewerRef = ref(null)
+const tilesetRef = ref(null)
 const selectedPoint = ref(null)
 const mouseCoords = ref('经度: --, 纬度: --, 高程: --米')
+const allPoints = ref([])
+const infoBoxVisible = ref(false)
+const infoBoxPosition = reactive({ x: 0, y: 0 })
 
+// 测点编号映射关系
+const POINT_MAPPING = {
+  'PL1': 'IP1',
+  'IP2': 'IP2',
+  'IP3': 'IP3'
+}
 
 // 响应式状态管理
 const settings = reactive({
@@ -38,64 +59,87 @@ const updateSettings = (newSettings) => {
   Object.assign(settings, newSettings)
 }
 
-const flyToPoint = (point) => {
-  // 如果 point 为 null，表示取消选中
+const fetchPoints = async () => {
+  try {
+    const res = await api.get('/points/')
+    allPoints.value = res.data
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+const handleSidebarSelect = (point) => {
+  selectedPoint.value = point
+  highlightTileFeature(point)
+  
+  if (point) {
+    updateInfoBoxForPoint(point)
+  } else {
+    infoBoxVisible.value = false
+  }
+}
+
+const highlightTileFeature = (point) => {
+  if (!tilesetRef.value) return
+
   if (!point) {
-    selectedPoint.value = null
-    // 移除之前的标记
-    if (viewerRef.value) {
-        viewerRef.value.entities.removeAll()
-    }
+    tilesetRef.value.style = new Cesium.Cesium3DTileStyle({
+       color: 'color("white")' 
+    })
     return
   }
 
-  selectedPoint.value = point
-  if (viewerRef.value && point.longitude && point.latitude) {
-    // 添加一个实体标记
-    viewerRef.value.entities.removeAll()
-    viewerRef.value.entities.add({
-        position: Cesium.Cartesian3.fromDegrees(point.longitude, point.latitude, (point.height || 0)),
-        point: {
-            pixelSize: 10,
-            color: Cesium.Color.RED,
-            outlineColor: Cesium.Color.WHITE,
-            outlineWidth: 2
-        },
-        label: {
-            text: point.point_name,
-            font: '14pt monospace',
-            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-            outlineWidth: 2,
-            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-            pixelOffset: new Cesium.Cartesian2(0, -9)
-        }
-    })
-
-    // 不再自动飞行到测点位置
-    /*
-    viewerRef.value.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(
-        point.longitude, 
-        point.latitude, 
-        (point.height || 0) + 200 // 飞到点上方200米
-      ),
-      orientation: {
-        heading: Cesium.Math.toRadians(0.0),
-        pitch: Cesium.Math.toRadians(-45.0),
-        roll: 0.0
-      },
-      duration: 2
-    })
-    */
+  let targetModelId = point.point_code
+  for (const [key, val] of Object.entries(POINT_MAPPING)) {
+    if (val === point.point_code) {
+      targetModelId = key
+      break
+    }
   }
+
+  tilesetRef.value.style = new Cesium.Cesium3DTileStyle({
+    color: {
+      conditions: [
+        [`\${ElementProxyCommonReference} === '${targetModelId}'`, 'color("red")'], 
+        ['true', 'color("white")'] 
+      ]
+    }
+  })
+}
+
+const updateInfoBoxForPoint = (point) => {
+    if(viewerRef.value && point.longitude && point.latitude) {
+        const position = Cesium.Cartesian3.fromDegrees(point.longitude, point.latitude, point.height || 0)
+        const canvasPosition = Cesium.SceneTransforms.wgs84ToWindowCoordinates(viewerRef.value.scene, position)
+        if (canvasPosition) {
+            infoBoxPosition.x = canvasPosition.x
+            infoBoxPosition.y = canvasPosition.y - 50 
+            infoBoxVisible.value = true
+        }
+    }
+}
+
+const updateInfoBoxPositionOnRender = () => {
+    if (!selectedPoint.value || !infoBoxVisible.value || !viewerRef.value) return
+    
+    const point = selectedPoint.value
+    const position = Cesium.Cartesian3.fromDegrees(point.longitude, point.latitude, (point.height || 0))
+    const canvasPosition = Cesium.SceneTransforms.wgs84ToWindowCoordinates(viewerRef.value.scene, position)
+    
+    if (canvasPosition) {
+        infoBoxPosition.x = canvasPosition.x 
+        infoBoxPosition.y = canvasPosition.y - 60
+    }
 }
 
 
 onMounted(async () => {
+  await fetchPoints()
   const viewer = new Cesium.Viewer('cesiumContainer', {
     animation: false,
     scene3DOnly: true,
     selectionIndicator: false,
+    infoBox: false,
     automaticallyTrackDataSourceClocks: false,
     sceneModePicker: false,
     timeline: true,
@@ -107,6 +151,7 @@ onMounted(async () => {
   })
 
   viewerRef.value = viewer
+  viewer.scene.postRender.addEventListener(updateInfoBoxPositionOnRender)
 
   // 提高阴影质量
   viewer.shadowMap.size = 4096; // 提高阴影分辨率
@@ -151,6 +196,7 @@ onMounted(async () => {
     // 模型入口文件为 public/model/tileset.json
     const tileset = await Cesium.Cesium3DTileset.fromUrl('/modeli/tileset.json');
     viewer.scene.primitives.add(tileset);
+    tilesetRef.value = tileset
     
     // 1. 定义目标位置的经纬度坐标和高度
     const position = Cesium.Cartesian3.fromDegrees(101.649854, 28.295500, 1050.42);
@@ -190,6 +236,63 @@ onMounted(async () => {
   } catch (error) {
     console.error(`加载本地 3D Tileset 失败: ${error}`);
   }
+
+  // 点击事件处理
+  const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+  handler.setInputAction(function (movement) {
+    const pickedObject = viewer.scene.pick(movement.position);
+    
+    // 调试日志：查看点击到了什么
+    console.log('Clicked object:', pickedObject);
+
+    if (Cesium.defined(pickedObject) && pickedObject instanceof Cesium.Cesium3DTileFeature) {
+        // 尝试获取多个可能的属性名
+        const refId = pickedObject.getProperty('ElementProxyCommonReference');
+        const name1 = pickedObject.getProperty('name_1');
+        const name = pickedObject.getProperty('name'); // 有些模型是 name
+        const elementId = pickedObject.getProperty('elementId'); 
+        
+        console.log('Picked Feature Properties:', { refId, name1, name, elementId });
+        
+        let targetPointCode = null;
+
+        // 1. 尝试通过 ElementProxyCommonReference 匹配
+        if (refId && POINT_MAPPING[refId]) {
+             targetPointCode = POINT_MAPPING[refId];
+        } 
+        // 2. 如果没有直接匹配，尝试从 name_1 解析 (例如 "IP:IP2:253389" -> "IP2")
+        else if (name1) {
+             const parts = name1.split(':');
+             if (parts.length >= 2) {
+                 const potentialDetails = parts[1]; // 取中间部分
+                 if (POINT_MAPPING[potentialDetails]) {
+                     targetPointCode = POINT_MAPPING[potentialDetails];
+                 } else if (allPoints.value.find(p => p.point_code === potentialDetails)) {
+                     targetPointCode = potentialDetails;
+                 }
+             }
+        }
+
+        console.log('Target Point Code:', targetPointCode);
+
+        if (targetPointCode) {
+             const point = allPoints.value.find(p => p.point_code === targetPointCode);
+             if (point) {
+                 handleSidebarSelect(point);
+             } else {
+                 console.warn('找到代码但未找到测点数据:', targetPointCode);
+             }
+        } else {
+             console.warn('未能匹配到测点代码');
+             // 如果点击了模型但没匹配到，也许应该清除选中？
+             // handleSidebarSelect(null); 
+        }
+
+    } else {
+        // console.log('未点击到 3D Tile Feature');
+        handleSidebarSelect(null);
+    }
+  }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
   // 开启光照、阴影、HDR 和抗锯齿
   viewer.scene.globe.enableLighting = true;
@@ -308,8 +411,8 @@ onMounted(async () => {
   addSouthWater(); // 执行新增的南侧水体函数
 
   // 显示鼠标位置坐标
-  const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
-  handler.setInputAction(function (movement) {
+  const moveHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
+  moveHandler.setInputAction(function (movement) {
     const cartesian = viewer.scene.pickPosition(movement.endPosition)
     if (cartesian) {
       const cartographic = Cesium.Cartographic.fromCartesian(cartesian)
@@ -329,7 +432,49 @@ onMounted(async () => {
 /* 整个容器 */
 #cesiumContainer {
   overflow: hidden;
+  position: relative;
 }
+
+.custom-infobox {
+  position: absolute;
+  background: rgba(10, 25, 50, 0.85);
+  border: 1px solid #00a0e9;
+  padding: 10px 15px;
+  border-radius: 4px;
+  color: #fff;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  z-index: 1000;
+  box-shadow: 0 0 15px rgba(0, 160, 233, 0.4);
+  backdrop-filter: blur(4px);
+  min-width: 120px;
+  text-align: center;
+}
+
+.infobox-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: #00e5ff;
+  margin-bottom: 5px;
+}
+
+.infobox-content {
+  font-size: 12px;
+  color: #ccc;
+}
+
+.infobox-arrow {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  margin-left: -6px;
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 6px solid #00a0e9;
+}
+
 
 /* 调整 Cesium InfoBox (弹窗) 位置，防止被右侧栏遮挡 */
 :deep(.cesium-infoBox) {

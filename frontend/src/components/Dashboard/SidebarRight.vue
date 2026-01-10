@@ -109,9 +109,16 @@ const chartOption = computed(() => {
     },
     xAxis: {
       type: 'category',
-      data: historyData.value.map(item => new Date(item.time).toLocaleTimeString()),
+      data: historyData.value.map(item => {
+        const date = new Date(item.time)
+        return `${date.getMonth() + 1}-${date.getDate()}\n${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
+      }),
       axisLine: { lineStyle: { color: 'rgba(0, 160, 233, 0.5)' } },
-      axisLabel: { color: '#fff' }
+      axisLabel: { 
+        color: '#fff',
+        interval: 'auto', 
+        fontSize: 10
+      }
     },
     yAxis: {
       type: 'value',
