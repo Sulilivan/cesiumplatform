@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-// 假设后端运行在 localhost:8000
-const API_URL = 'http://localhost:8000';
+// 从环境变量读取 API 地址，默认为 localhost:8000
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const api = axios.create({
   baseURL: API_URL,

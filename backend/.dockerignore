@@ -1,0 +1,39 @@
+# 依赖
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 构建产物
+dist/
+build/
+*.egg-info/
+
+# 开发工具
+.git/
+.gitignore
+.vscode/
+.idea/
+*.md
+*.log
+
+# 环境文件
+.env
+.env.local
+.env.*.local
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 测试
+*.test.js
+*.spec.js
+__tests__/
+coverage/
+
+# 临时文件
+*.tmp
+*.temp
+.cache/

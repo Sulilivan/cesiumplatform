@@ -1,0 +1,70 @@
+# Docker Compose 生产环境配置
+# 使用: docker-compose -f docker-compose.prod.yml up -d
+
+services:
+  # 后端 API 服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: water-platform-backend-prod
+    ports:
+      - "8000:8000"
+    volumes:
+      # 仅持久化数据库
+      - water-platform-db:/app/data
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    restart: always
+    networks:
+      - water-platform-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 前端生产服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    container_name: water-platform-frontend-prod
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      - backend
+    restart: always
+    networks:
+      - water-platform-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 可选: Nginx 反向代理 (统一入口)
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: water-platform-nginx
+  #   ports:
+  #     - "80:80"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #   depends_on:
+  #     - frontend
+  #     - backend
+  #   restart: always
+  #   networks:
+  #     - water-platform-network
+
+volumes:
+  water-platform-db:
+
+networks:
+  water-platform-network:
+    driver: bridge

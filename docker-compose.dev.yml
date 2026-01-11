@@ -1,0 +1,49 @@
+# Docker Compose 开发环境配置
+# 使用: docker-compose -f docker-compose.dev.yml up
+
+services:
+  # 后端 API 服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: water-platform-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      # 挂载代码目录实现热重载
+      - ./backend:/app
+      # 持久化数据库
+      - ./backend/water_platform.db:/app/water_platform.db
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    networks:
+      - water-platform-network
+
+  # 前端开发服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: water-platform-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      # 挂载代码目录实现热重载
+      - ./frontend:/app
+      # 避免覆盖 node_modules
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_CESIUM_BASE_URL=/Cesium
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - water-platform-network
+
+networks:
+  water-platform-network:
+    driver: bridge
