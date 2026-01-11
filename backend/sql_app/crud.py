@@ -99,6 +99,23 @@ def get_all_latest_measurements(db: Session) -> List[dict]:
             })
     return result
 
+def update_point(db: Session, point_code: str, point_update: dict) -> Optional[models.MonitorPoint]:
+    db_point = db.query(models.MonitorPoint).filter(models.MonitorPoint.point_code == point_code).first()
+    if db_point:
+        for key, value in point_update.items():
+            setattr(db_point, key, value)
+        db.commit()
+        db.refresh(db_point)
+    return db_point
+
+def delete_point(db: Session, point_code: str) -> bool:
+    db_point = db.query(models.MonitorPoint).filter(models.MonitorPoint.point_code == point_code).first()
+    if db_point:
+        db.delete(db_point)
+        db.commit()
+        return True
+    return False
+
 def get_inverted_plumb_data(db: Session, point_code: str, skip: int = 0, limit: int = 100) -> List[models.InvertedPlumbData]:
     return db.query(models.InvertedPlumbData).filter(
         models.InvertedPlumbData.point_code == point_code

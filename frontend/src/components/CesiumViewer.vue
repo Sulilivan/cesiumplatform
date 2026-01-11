@@ -52,7 +52,8 @@ const POINT_MAPPING = {
 const settings = reactive({
   lighting: true,
   shadows: true,
-  antiAliasing: true
+  antiAliasing: true,
+  hdr: true
 })
 
 const updateSettings = (newSettings) => {
@@ -138,10 +139,12 @@ onMounted(async () => {
   const viewer = new Cesium.Viewer('cesiumContainer', {
     animation: false,
     scene3DOnly: true,
-    selectionIndicator: false,
-    infoBox: false,
+    selectionIndicator: true, // 恢复原生 - 需求 8
+    infoBox: true, // 恢复原生 - 需求 8
     automaticallyTrackDataSourceClocks: false,
     sceneModePicker: false,
+    baseLayerPicker: false, // 去掉右上角地图选择 - 需求 5
+    fullscreenButton: false, // 去掉右下角全屏按钮 - 需求 5
     timeline: true,
     geocoder: false,         // 关闭搜索
     homeButton: false,
@@ -170,6 +173,12 @@ onMounted(async () => {
   watch(() => settings.antiAliasing, (val) => {
     viewer.scene.msaaSamples = val ? 4 : 1
     viewer.scene.postProcessStages.fxaa.enabled = val
+  }, { immediate: true })
+
+  watch(() => settings.hdr, (val) => {
+    if (viewer.scene.highDynamicRangeSupported) {
+        viewer.scene.highDynamicRange = val;
+    }
   }, { immediate: true })
 
   // 隐藏 Cesium logo
@@ -278,7 +287,12 @@ onMounted(async () => {
         if (targetPointCode) {
              const point = allPoints.value.find(p => p.point_code === targetPointCode);
              if (point) {
-                 handleSidebarSelect(point);
+                 // Toggle logic: If already selected, deselect. - 需求 1
+                 if (selectedPoint.value && selectedPoint.value.point_code === targetPointCode) {
+                     handleSidebarSelect(null);
+                 } else {
+                     handleSidebarSelect(point);
+                 }
              } else {
                  console.warn('找到代码但未找到测点数据:', targetPointCode);
              }
@@ -297,8 +311,15 @@ onMounted(async () => {
   // 开启光照、阴影、HDR 和抗锯齿
   viewer.scene.globe.enableLighting = true;
   viewer.terrainShadows = Cesium.ShadowMode.ENABLED;
-  viewer.scene.msaaSamples = 16;
+  viewer.scene.msaaSamples = 4; // 适度降低以提高性能，16可能太高
   viewer.scene.postProcessStages.fxaa.enabled = true;
+
+  // 修复透明透视和穿模问题
+  // 强制开启深度检测，防止模型被错误遮挡或透视 (Fix "clipping/transparency" error)
+  viewer.scene.globe.depthTestAgainstTerrain = true; 
+  // 开启对数深度缓冲区，减少 z-fighting
+  viewer.scene.logarithmicDepthBuffer = true;
+  // 注意：orderIndependentTranslucency 在新版 Cesium 中是只读属性，不能设置
 
   // 开启HDR
   if (viewer.scene.highDynamicRangeSupported) {
@@ -307,103 +328,74 @@ onMounted(async () => {
 
   // --- 添加北侧水体（上游大面积水域） ---
   function addWater() {
-    // 1. 定义水体材质
-    const waterMaterial = new Cesium.Material({
-      fabric: {
-        type: 'Water',
-        uniforms: {
-          baseWaterColor: new Cesium.Color(0.0, 0.3, 0.5, 0.6), 
-          normalMap: '/modeli/myWaterNormals.jpg',
-          // 北侧水域狭长，设置高频率以获得细腻波纹
-          frequency: 5000.0,      
-          animationSpeed: 0.01,   // 降低数值以减缓波浪动画速度
-          amplitude: 5.0,         
-          specularIntensity: 0.8  
-        }
-      }
-    });
-
-    // 2. 北侧水体坐标范围 
-    const waterKeyPoints = [
-      101.580092, 28.285723,
-      101.698043, 28.285725,
-      101.698043, 28.400000,
-      101.580092, 28.400000
-    ];
-
-    // 3. 创建几何体
-    const waterPolygon = new Cesium.PolygonGeometry({
-      polygonHierarchy: new Cesium.PolygonHierarchy(
-        Cesium.Cartesian3.fromDegreesArray(waterKeyPoints)
-      ),
-      height:1688,          // 水面高度 (米)，设在模型下方一点
-      extrudedHeight: 950,  // 水体底部高度
-      vertexFormat: Cesium.EllipsoidSurfaceAppearance.VERTEX_FORMAT
-    });
-
-    // 4. 创建图元实例
-    const geometryInstance = new Cesium.GeometryInstance({
-      geometry: waterPolygon
-    });
-
-    // 5. 添加到场景
-    viewer.scene.primitives.add(new Cesium.Primitive({
-      geometryInstances: geometryInstance,
-      appearance: new Cesium.EllipsoidSurfaceAppearance({
-        material: waterMaterial,
-        aboveGround: true // 确保在地形之上正确渲染
+    const waterPrimitive = new Cesium.Primitive({
+      geometryInstances: new Cesium.GeometryInstance({
+        geometry: new Cesium.PolygonGeometry({
+          polygonHierarchy: new Cesium.PolygonHierarchy(
+            Cesium.Cartesian3.fromDegreesArray([
+              101.580092, 28.285723,
+              101.698043, 28.285725,
+              101.698043, 28.400000,
+              101.580092, 28.400000
+            ])
+          ),
+          height: 1688
+        })
       }),
-      show: true,
-      shadows: Cesium.ShadowMode.RECEIVE_ONLY // 仅接收阴影
-    }));
+      appearance: new Cesium.EllipsoidSurfaceAppearance({
+        material: new Cesium.Material({
+          fabric: {
+            type: 'Water',
+            uniforms: {
+              baseWaterColor: new Cesium.Color(0.2, 0.5, 0.4, 0.6),
+              normalMap: '/modeli/myWaterNormals.jpg',
+              frequency: 1000.0,
+              animationSpeed: 0.01,
+              amplitude: 10.0,
+              specularIntensity: 0.8
+            }
+          }
+        })
+      })
+    });
+    viewer.scene.primitives.add(waterPrimitive);
+    console.log('上游水体已添加 (Primitive + Water Material)');
   }
 
   // --- 添加南侧水体（下游小面积水域） ---
   function addSouthWater() {
-    const waterMaterial = new Cesium.Material({
-      fabric: {
-        type: 'Water',
-        uniforms: {
-          baseWaterColor: new Cesium.Color(0.0, 0.3, 0.5, 0.6), 
-          normalMap:'/modeli/myWaterNormals.jpg', 
-          // 南侧区域较小，使用标准频率
-          frequency: 1000.0,      
-          animationSpeed: 0.01,   // 保持与北侧一致的慢速流动
-          amplitude: 5.0,        
-          specularIntensity: 0.8
-        }
-      }
-    });
-
-    // 修正坐标使其与北侧完全对称
-    // 北侧纬度跨度约 0.014277，中心轴为 28.285723
-    const waterKeyPoints = [
-      101.620092, 28.201446, // 左下
-      101.658043, 28.201446, // 右下
-      101.658043, 28.285723, // 右上
-      101.620092, 28.285723  // 左上
-    ];
-
-    const waterPolygon = new Cesium.PolygonGeometry({
-      polygonHierarchy: new Cesium.PolygonHierarchy(
-        Cesium.Cartesian3.fromDegreesArray(waterKeyPoints)
-      ),
-      height: 1900,          // 高度保持与北侧一致
-      extrudedHeight: 940,  // 水底高度
-      vertexFormat: Cesium.EllipsoidSurfaceAppearance.VERTEX_FORMAT
-    });
-
-    viewer.scene.primitives.add(new Cesium.Primitive({
+    const waterPrimitive = new Cesium.Primitive({
       geometryInstances: new Cesium.GeometryInstance({
-        geometry: waterPolygon
+        geometry: new Cesium.PolygonGeometry({
+          polygonHierarchy: new Cesium.PolygonHierarchy(
+            Cesium.Cartesian3.fromDegreesArray([
+              101.620092, 28.201446,
+              101.658043, 28.201446,
+              101.658043, 28.285723,
+              101.620092, 28.285723
+            ])
+          ),
+          height: 1900
+        })
       }),
       appearance: new Cesium.EllipsoidSurfaceAppearance({
-        material: waterMaterial,
-        aboveGround: true
-      }),
-      show: true,
-      shadows: Cesium.ShadowMode.RECEIVE_ONLY
-    }));
+        material: new Cesium.Material({
+          fabric: {
+            type: 'Water',
+            uniforms: {
+              baseWaterColor: new Cesium.Color(0.2, 0.5, 0.4, 0.6),
+              normalMap: '/modeli/myWaterNormals.jpg',
+              frequency: 1000.0,
+              animationSpeed: 0.01,
+              amplitude: 10.0,
+              specularIntensity: 0.8
+            }
+          }
+        })
+      })
+    });
+    viewer.scene.primitives.add(waterPrimitive);
+    console.log('下游水体已添加 (Primitive + Water Material)');
   }
 
   // 执行添加水体

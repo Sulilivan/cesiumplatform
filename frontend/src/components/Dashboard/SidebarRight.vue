@@ -17,8 +17,8 @@
             </thead>
             <tbody>
                 <tr>
-                    <td>最新水位</td>
-                    <td class="value">{{ latestData.value || '--' }} m</td>
+                    <td>{{ isWaterLevel ? '最新水位' : '最新位移' }}</td>
+                    <td class="value">{{ latestData.value !== undefined ? latestData.value : '--' }} <span class="unit">{{ unit }}</span></td>
                 </tr>
                 <tr>
                     <td>监测时间</td>
@@ -26,15 +26,15 @@
                 </tr>
                 <tr>
                     <td>最大值</td>
-                    <td>{{ stats.max_value || '--' }} m</td>
+                    <td>{{ stats.max_value !== undefined ? stats.max_value : '--' }} <span class="unit">{{ unit }}</span></td>
                 </tr>
                 <tr>
                     <td>最小值</td>
-                    <td>{{ stats.min_value || '--' }} m</td>
+                    <td>{{ stats.min_value !== undefined ? stats.min_value : '--' }} <span class="unit">{{ unit }}</span></td>
                 </tr>
                 <tr>
                     <td>平均值</td>
-                    <td>{{ stats.avg_value ? stats.avg_value.toFixed(2) : '--' }} m</td>
+                    <td>{{ stats.avg_value ? stats.avg_value.toFixed(2) : '--' }} <span class="unit">{{ unit }}</span></td>
                 </tr>
             </tbody>
         </table>
@@ -86,6 +86,16 @@ const latestData = ref({})
 const stats = ref({})
 const historyData = ref([])
 
+// 判断是否为水位测点
+const isWaterLevel = computed(() => {
+  return props.pointName && props.pointName.includes('水位')
+})
+
+// 单位判断：水位用 m，其他用 mm
+const unit = computed(() => {
+  return isWaterLevel.value ? 'm' : 'mm'
+})
+
 const formatDate = (str) => {
     if (!str) return '--'
     return new Date(str).toLocaleString()
@@ -122,6 +132,8 @@ const chartOption = computed(() => {
     },
     yAxis: {
       type: 'value',
+      name: unit.value, // 显示单位
+      nameTextStyle: { color: '#aaa' },
       axisLine: { lineStyle: { color: 'rgba(0, 160, 233, 0.5)' } },
       axisLabel: { color: '#fff' },
       splitLine: { lineStyle: { color: 'rgba(0, 160, 233, 0.2)' } },
@@ -148,48 +160,48 @@ const chartOption = computed(() => {
           }
         }
       }
-    ],
-    dataZoom: [
-        {
-            type: 'inside',
-            start: 0,
-            end: 100
-        }
     ]
   }
 })
 
-const fetchDetail = async (code) => {
-    if(!code) return
-    try {
-        // 获取最新值
-        const resLatest = await api.get(`/measurements/${code}/latest`)
-        latestData.value = resLatest.data
-
-        // 获取统计
-        const resStats = await api.get(`/measurements/${code}/stats`)
-        stats.value = resStats.data
-
-        // 获取历史数据（这里可能需要限制数量或时间范围，这里简单获取全部或者最近的）
-        // 实际上后端 /measurements/{code} 如果数据量大需要分页或时间筛选
-        const resHistory = await api.get(`/measurements/${code}`)
-        historyData.value = resHistory.data.slice(-50) // 取最后50条
-    } catch (e) {
-        console.error('Fetch detail failed', e)
-        latestData.value = {}
-        stats.value = {}
-        historyData.value = []
+const fetchData = async () => {
+  if (!props.pointCode) return
+  
+  try {
+    // 1. 获取最新数据
+    const resLatest = await api.get(`/measurements/${props.pointCode}/latest`)
+    latestData.value = resLatest.data
+    
+    // 2. 获取统计数据
+    const resStats = await api.get(`/measurements/${props.pointCode}/stats`)
+    stats.value = resStats.data
+    
+    // 3. 获取历史数据 (最近 20 条用于绘图) - API 可能需要 limit 支持，暂取全部然后截取
+    // 注意：这里使用的是 range 接口或者默认的 measurements 列表接口
+    // 假设后端 /measurements/{code} 返回列表
+    const resHistory = await api.get(`/measurements/${props.pointCode}`)
+    // 取最近 50 条并反转顺序（如果是降序返回）若后端是升序则直接用
+    // 假设后端是按时间排序的
+    let data = resHistory.data
+    // 如果数据量太大，截取一部分
+    if (data.length > 50) {
+        data = data.slice(data.length - 50) 
     }
+    historyData.value = data
+
+  } catch (error) {
+    console.error("Fetch point data error:", error)
+    // 重置数据
+    latestData.value = {}
+    stats.value = {}
+    historyData.value = []
+  }
 }
 
-watch(() => props.pointCode, (newCode) => {
-    if (newCode) {
-        fetchDetail(newCode)
-    } else {
-        latestData.value = {}
-        stats.value = {}
-        historyData.value = []
-    }
+watch(() => props.pointCode, (newVal) => {
+  if (newVal) {
+    fetchData()
+  }
 }, { immediate: true })
 
 </script>
@@ -198,76 +210,88 @@ watch(() => props.pointCode, (newCode) => {
 .sidebar-right {
   position: absolute;
   right: 20px;
-  top: 80px;
-  width: 320px;
-  bottom: 120px;
-  background: rgba(10, 25, 50, 0.7);
+  top: 100px;
+  bottom: 20px;
+  width: 350px;
+  background: rgba(10, 25, 50, 0.8);
   border: 1px solid rgba(0, 160, 233, 0.3);
-  backdrop-filter: blur(10px);
-  color: #fff;
+  box-shadow: 0 0 35px rgba(0, 160, 233, 0.5);
   display: flex;
   flex-direction: column;
-  z-index: 100;
-  box-shadow: 0 0 20px rgba(0, 160, 233, 0.2) inset;  transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+  backdrop-filter: blur(10px);
+  transition: transform 0.3s ease-in-out;
+  border-radius: 12px; /* 圆角 - 需求 3 */
 }
 
 .sidebar-right.collapsed {
-  transform: translateX(340px); /* 移出屏幕 */
-  opacity: 0;
-  pointer-events: none;}
+  transform: translateX(400px); /* 移出屏幕 */
+}
 
 .panel-header {
-  height: 40px;
-  background: rgba(0, 160, 233, 0.2);
+  height: 50px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-bottom: 1px solid rgba(0, 160, 233, 0.5);
+  background: rgba(0, 160, 233, 0.1);
+  border-bottom: 1px solid rgba(0, 160, 233, 0.3);
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
 }
 
 .title {
-  font-weight: bold;
   color: #00e5ff;
+  font-size: 18px;
+  font-weight: bold;
 }
 
 .panel-content {
-  padding: 15px;
   flex: 1;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
+  padding: 20px;
 }
 
 .section-title {
+  color: #fff;
   font-size: 14px;
-  border-left: 3px solid #00e5ff;
-  padding-left: 8px;
   margin-bottom: 10px;
-  color: #cceeff;
+  border-left: 3px solid #00e5ff;
+  padding-left: 10px;
 }
 
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
-  margin-bottom: 15px;
+  margin-bottom: 20px;
 }
 
 .data-table th, .data-table td {
-  border: 1px solid rgba(0, 160, 233, 0.3);
   padding: 8px;
   text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: #ccc;
+  font-size: 14px;
 }
 
 .data-table th {
-  background: rgba(0, 160, 233, 0.2);
   color: #00e5ff;
 }
 
-.value {
-  color: #00ff00;
-  font-family: 'Courier New', Courier, monospace;
+.data-table .value {
+  color: #00e5ff;
   font-weight: bold;
+  font-size: 16px;
+}
+
+.unit {
+  font-size: 12px;
+  color: #aaa;
+  margin-left: 4px;
+}
+
+.divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 20px 0;
 }
 
 .chart-container {
@@ -281,16 +305,8 @@ watch(() => props.pointCode, (newCode) => {
 }
 
 .empty-state {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(255,255,255,0.5);
-}
-
-.divider {
-  height: 1px;
-  background: rgba(0, 160, 233, 0.3);
-  margin: 15px 0;
+  text-align: center;
+  color: #aaa;
+  margin-top: 50px;
 }
 </style>

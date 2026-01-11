@@ -6,9 +6,15 @@
         <h1 class="header-title">重力坝三维数据中心</h1>
         <div class="header-subtitle">Gravity Dam 3D Data Center</div>
       </div>
-      <button @click="logout" class="logout-btn-top">
-        退出
-      </button>
+      
+      <div class="top-buttons">
+          <button v-if="isAdmin" @click="goToAdmin" class="admin-btn-top">
+              管理
+          </button>
+          <button @click="logout" class="logout-btn-top">
+              退出
+          </button>
+      </div>
     </div>
 
     <SidebarLeft 
@@ -28,7 +34,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import SidebarLeft from './Dashboard/SidebarLeft.vue'
 import SidebarRight from './Dashboard/SidebarRight.vue'
 import BottomBar from './Dashboard/BottomBar.vue'
@@ -44,6 +50,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:settings', 'select-point'])
 const router = useRouter()
+const isAdmin = ref(false)
 
 const updateSettings = (newSettings) => {
   emit('update:settings', newSettings)
@@ -57,6 +64,24 @@ const logout = () => {
   apiUtils.logout()
   router.push('/login')
 }
+
+const goToAdmin = () => {
+    router.push('/admin')
+}
+
+onMounted(() => {
+    const userStr = localStorage.getItem('user')
+    if (userStr) {
+        try {
+            const user = JSON.parse(userStr)
+            if (user.role === 'admin') {
+                isAdmin.value = true
+            }
+        } catch (e) {
+            console.error('Failed to parse user info', e)
+        }
+    }
+})
 </script>
 
 <style scoped>
@@ -79,7 +104,7 @@ const logout = () => {
 
 .top-header {
   height: 80px;
-  background: url('/header-bg.png') no-repeat center top; /* 假设有个头部背景图，这里暂时用渐变替代 */
+  background: url('/header-bg.png') no-repeat center top; 
   background: linear-gradient(to bottom, rgba(10, 25, 50, 1) 0%, rgba(10, 25, 50, 0) 100%);
   display: flex;
   justify-content: center;
@@ -97,7 +122,6 @@ const logout = () => {
   font-size: 32px;
   margin: 0;
   letter-spacing: 4px;
-  text-shadow: 0 0 10px #00a0e9;
   font-weight: bold;
 }
 
@@ -108,10 +132,15 @@ const logout = () => {
   text-transform: uppercase;
 }
 
-.logout-btn-top {
-  position: absolute;
-  right: 20px;
-  top: 20px;
+.top-buttons {
+    position: absolute;
+    right: 20px;
+    top: 20px;
+    display: flex;
+    gap: 10px;
+}
+
+.logout-btn-top, .admin-btn-top {
   background: rgba(0, 160, 233, 0.2);
   border: 1px solid #00a0e9;
   color: #fff;
@@ -119,10 +148,34 @@ const logout = () => {
   cursor: pointer;
   clip-path: polygon(10px 0, 100% 0, 100% 100%, 0 100%, 0 10px);
   transition: all 0.3s;
+  font-size: 14px;
+  display: flex; /* 统一布局 */
+  align-items: center;
+  justify-content: center;
+  min-width: 60px;
+}
+
+/* 管理按钮：蓝色半透明 */
+.admin-btn-top {
+    background: rgba(0, 160, 233, 0.2); 
+    border: 1px solid #00a0e9;
+    box-shadow: 0 0 5px rgba(0, 160, 233, 0.3);
+}
+
+.admin-btn-top:hover {
+    background: rgba(0, 160, 233, 0.5);
+    box-shadow: 0 0 15px #00a0e9;
+}
+
+/* 退出按钮：红色半透明 */
+.logout-btn-top {
+    background: rgba(255, 77, 79, 0.2);
+    border: 1px solid #ff4d4f;
+    box-shadow: 0 0 5px rgba(255, 77, 79, 0.3);
 }
 
 .logout-btn-top:hover {
-  background: rgba(0, 160, 233, 0.5);
-  box-shadow: 0 0 10px #00a0e9;
+    background: rgba(255, 77, 79, 0.5);
+    box-shadow: 0 0 15px #ff4d4f;
 }
 </style>
