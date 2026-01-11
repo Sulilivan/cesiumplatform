@@ -181,13 +181,19 @@ const updateInfoBoxPositionOnRender = () => {
 onMounted(async () => {
   await fetchPoints()
   const viewer = new Cesium.Viewer('cesiumContainer', {
-    animation: false,
-    scene3DOnly: true,
-    selectionIndicator: true, // 恢复原生 - 需求 8
-    infoBox: true, // 恢复原生 - 需求 8
-    automaticallyTrackDataSourceClocks: false,
+    baseLayerPicker: false,
+    geocoder: false,
+    homeButton: false,
     sceneModePicker: false,
-    baseLayerPicker: false, // 去掉右上角地图选择 - 需求 5
+    navigationHelpButton: false,
+    animation: false,
+    timeline: false,
+    fullscreenButton: false,
+    vrButton: false,
+    selectionIndicator: false,  // 关闭选择指示器
+    infoBox: false,             // 关闭原生信息框
+    automaticallyTrackDataSourceClocks: false,
+    // 去掉右上角地图选择 - 需求 5
     fullscreenButton: false, // 去掉右下角全屏按钮 - 需求 5
     timeline: true,
     geocoder: false,         // 关闭搜索
