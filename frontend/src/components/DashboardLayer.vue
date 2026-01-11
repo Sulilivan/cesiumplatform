@@ -22,9 +22,10 @@
       :currentPointCode="currentPointCode"
       @update:settings="updateSettings" 
       @select-point="selectPoint"
+      @reset-view="handleResetView"
     />
 
-    <SidebarRight 
+    <SidebarRight
       :pointCode="currentPointCode"
       :pointName="currentPointName"
       @bind-model="(code) => emit('bind-model', code)"
@@ -70,6 +71,12 @@ const goToAdmin = () => {
     router.push('/admin')
 }
 
+const handleResetView = () => {
+    if (window.resetView) {
+        window.resetView()
+    }
+}
+
 onMounted(() => {
     const userStr = localStorage.getItem('user')
     if (userStr) {
@@ -111,7 +118,6 @@ onMounted(() => {
   justify-content: center;
   align-items: center;
   position: relative;
-  border-bottom: 1px solid rgba(0, 160, 233, 0.3);
 }
 
 .header-bg {
@@ -124,6 +130,7 @@ onMounted(() => {
   margin: 0;
   letter-spacing: 4px;
   font-weight: bold;
+  text-shadow: 0 0 10px rgba(0, 229, 255, 0.6), 0 0 20px rgba(0, 160, 233, 0.4); /* 发光效果 */
 }
 
 .header-subtitle {

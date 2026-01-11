@@ -1,8 +1,5 @@
 <template>
-  <div class="sidebar-wrapper" :class="{ collapsed: isCollapsed }">
-    <div class="toggle-btn" @click="toggleSidebar" title="收起/展开">
-      {{ isCollapsed ? '◀' : '▶' }}
-    </div>
+  <div class="sidebar-wrapper" :class="{ collapsed: !pointCode }">
 
     <div class="sidebar-right">
       <div class="panel-header">
@@ -91,19 +88,16 @@ const props = defineProps({
   pointName: String
 })
 
-const isCollapsed = ref(true) // Default collapsed
+// const isCollapsed = ref(true) // No longer needed
 const latestData = ref({})
 const stats = ref({})
 const historyData = ref([])
 
-const toggleSidebar = () => {
-  isCollapsed.value = !isCollapsed.value
-}
+// const toggleSidebar = () => { ... } // Removed
 
-// Watch pointCode to auto-expand
+// Watch pointCode to auto-fetch
 watch(() => props.pointCode, (newVal) => {
   if (newVal) {
-    isCollapsed.value = false
     fetchData()
   }
 }, { immediate: true })
@@ -219,34 +213,16 @@ const fetchData = async () => {
   top: 100px;
   bottom: 90px;
   width: 350px;
-  transition: width 0.3s, transform 0.3s;
+  transition: transform 0.3s;
   pointer-events: auto;
   z-index: 10;
 }
 
 .sidebar-wrapper.collapsed {
-  transform: translateX(375px); /* Move entirely off screen (width + toggle button + margin) */
+  transform: translateX(400px); /* Move entirely off screen */
 }
 
-.toggle-btn {
-  position: absolute;
-  left: -25px; /* Position on left side of the sidebar */
-  top: 50%;
-  width: 25px;
-  height: 50px;
-  background: rgba(10, 25, 50, 0.8);
-  color: #00e5ff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  border-top-left-radius: 8px; /* Symmetric custom radius */
-  border-bottom-left-radius: 8px;
-  font-size: 12px;
-  border: 1px solid rgba(0, 160, 233, 0.3);
-  border-right: none; /* Remove border adjacent to sidebar */
-  pointer-events: auto;
-}
+/* toggle-btn removed */
 
 .sidebar-right {
   width: 100%;

@@ -16,6 +16,13 @@
       >
         测点管理
       </div>
+      <div 
+        class="menu-item" 
+        :class="{ active: currentTab === 'data' }"
+        @click="currentTab = 'data'"
+      >
+        数据中心
+      </div>
       <div class="menu-item back-btn" @click="goBack">
         &lt; 返回地图
       </div>
@@ -111,6 +118,89 @@
           </tbody>
         </table>
       </div>
+
+      <!-- 数据中心面板 -->
+      <div v-if="currentTab === 'data'" class="panel">
+        <div class="panel-header" style="flex-direction: column; align-items: flex-start;">
+          <div style="display: flex; justify-content: space-between; width: 100%; margin-bottom: 10px;">
+              <h2>数据中心</h2>
+              <div class="view-mode-toggle">
+                  <button :class="{active: viewMode==='table'}" @click="switchView('table')" class="toggle-btn">表格</button>
+                  <button :class="{active: viewMode==='chart'}" @click="switchView('chart')" class="toggle-btn">图表</button>
+              </div>
+          </div>
+          <div class="header-actions" style="width: 100%; flex-wrap: wrap;">
+            <div class="filter-group">
+              <label>时间:</label>
+              <input type="datetime-local" v-model="dataFilters.startTime" class="filter-input">
+              <span>至</span>
+              <input type="datetime-local" v-model="dataFilters.endTime" class="filter-input">
+              
+              <select v-model="dataFilters.type" class="filter-select" @change="dataFilters.name = ''">
+                <option value="">全部类型</option>
+                <option value="倒垂线">倒垂线</option>
+                <option value="引张线">引张线</option>
+                <option value="静力水准">静力水准</option>
+                <option value="水位">水位</option>
+              </select>
+              
+              <select v-model="dataFilters.name" class="filter-select" style="min-width: 150px;">
+                  <option value="">全部测点</option>
+                  <option v-for="p in filteredPointsForData" :key="p.point_code" :value="p.point_name">
+                      {{ p.point_name }}
+                  </option>
+              </select>
+
+              <button class="btn-primary" @click="fetchData">查询</button>
+              <button class="btn-primary" @click="openDataModal(null)">添加数据</button>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Table View -->
+        <div v-if="viewMode === 'table'">
+           <div style="margin-bottom: 10px; color: #666; font-size: 14px;">
+               共 {{ totalCount }} 条数据，当前第 {{ currentPage }} 页
+           </div>
+           <table class="admin-table">
+             <thead>
+                 <tr>
+                     <th>ID</th>
+                     <th>测点编号</th>
+                     <th>测点名称</th>
+                     <th>类型</th>
+                     <th>监测值</th>
+                     <th>时间</th>
+                     <th>操作</th>
+                 </tr>
+             </thead>
+             <tbody>
+                 <tr v-for="d in measurements" :key="d.id">
+                     <td>{{d.id}}</td>
+                     <td>{{d.point_code}}</td>
+                     <td>{{d.point_name}}</td>
+                     <td>{{d.device_type}}</td>
+                     <td>{{d.value}}</td>
+                     <td>{{ formatDate(d.time) }}</td>
+                     <td>
+                         <button class="btn-edit" @click="openDataModal(d)">编辑</button>
+                         <button class="btn-danger" @click="deleteData(d.id)">删除</button>
+                     </td>
+                 </tr>
+             </tbody>
+           </table>
+           <div class="pagination" style="margin-top: 16px; display: flex; gap: 10px; align-items: center;">
+               <button class="btn-primary" :disabled="currentPage <= 1" @click="changePage(-1)">上一页</button>
+               <span>第 {{ currentPage }} 页</span>
+               <button class="btn-primary" :disabled="measurements.length < pageSize" @click="changePage(1)">下一页</button>
+           </div>
+        </div>
+        
+        <!-- Chart View -->
+        <div v-if="viewMode === 'chart'" class="chart-wrapper">
+           <div ref="chartDiv" style="width: 100%; height: 500px;"></div>
+        </div>
+      </div>
     </div>
 
     <div v-if="showUserModal" class="modal-overlay">
@@ -190,13 +280,48 @@
         </form>
       </div>
     </div>
+
+    <!-- 数据编辑/添加弹窗 -->
+    <div v-if="showDataModal" class="modal-overlay">
+      <div class="modal">
+        <h3>{{ isDataEditing ? '编辑数据' : '添加数据' }}</h3>
+        <form @submit.prevent="saveData">
+          <div class="form-group">
+            <label>测点编号 ({{ isDataEditing ? '不可改' : '请选择' }})</label>
+            <input v-if="isDataEditing" v-model="dataForm.point_code" disabled>
+            <select v-else v-model="dataForm.point_code" required>
+                <option v-for="p in points" :key="p.point_code" :value="p.point_code">
+                    {{p.point_name}} ({{p.point_code}})
+                </option>
+            </select>
+          </div>
+          <div class="form-group">
+             <label>监测值</label>
+             <input type="number" step="any" v-model.number="dataForm.value" required>
+          </div>
+          <div class="form-group">
+             <label>监测时间</label>
+             <input type="datetime-local" v-model="dataForm.time" required>
+          </div>
+          <div class="form-group">
+             <label>测量类型 (可选)</label>
+             <input v-model="dataForm.measurement_type" placeholder="如：左右岸, 上下游...">
+          </div>
+          <div class="modal-actions">
+            <button type="button" @click="showDataModal = false">取消</button>
+            <button type="submit" class="btn-primary">保存</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, reactive, computed } from 'vue'
+import { ref, onMounted, reactive, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/utils/api'
+import * as echarts from 'echarts'
 
 const router = useRouter()
 const currentTab = ref('users')
@@ -216,6 +341,14 @@ const filteredPoints = computed(() => {
   return points.value.filter(p => p.device_type === pointTypeFilter.value)
 })
 
+// 数据中心：根据选择的类型筛选可选测点
+const filteredPointsForData = computed(() => {
+    if (!dataFilters.type) {
+        return points.value
+    }
+    return points.value.filter(p => p.device_type === dataFilters.type)
+})
+
 const pointForm = reactive({
   point_code: '',
   point_name: '',
@@ -232,6 +365,188 @@ const userForm = reactive({
     email: '',
     role: 'user'
 })
+
+/* Data Center Vars */
+const measurements = ref([])
+const chartData = ref([])  // 图表专用数据
+const showDataModal = ref(false)
+const isDataEditing = ref(false)
+const viewMode = ref('table')
+const chartDiv = ref(null)
+const chartInstance = ref(null)
+const currentPage = ref(1)
+const pageSize = 50
+const totalCount = ref(0)
+
+const dataFilters = reactive({
+    startTime: '',
+    endTime: '',
+    type: '',
+    name: ''
+})
+
+const dataForm = reactive({
+    id: null,
+    point_code: '',
+    value: 0,
+    time: '',
+    measurement_type: ''
+})
+
+/* Data Center Functions */
+const switchView = (mode) => {
+    viewMode.value = mode
+    if (mode === 'chart') {
+        nextTick(initChart)
+    }
+}
+
+const formatDate = (str) => {
+    if(!str) return ''
+    return str.replace('T', ' ')
+}
+
+const fetchData = async (resetPage = true) => {
+    try {
+        if (resetPage) currentPage.value = 1
+        
+        const params = {
+            skip: (currentPage.value - 1) * pageSize,
+            limit: pageSize
+        }
+        if (dataFilters.startTime) params.start_time = new Date(dataFilters.startTime).toISOString()
+        if (dataFilters.endTime) params.end_time = new Date(dataFilters.endTime).toISOString()
+        if (dataFilters.type) params.device_type = dataFilters.type
+        if (dataFilters.name) params.point_name = dataFilters.name
+        
+        console.log('Fetching data with params:', params)
+        const res = await api.get('/measurements/search', { params })
+        console.log('API response:', res.data)
+        measurements.value = res.data
+        
+        // 获取总数（简单估算：如果返回满页则可能有更多）
+        if (currentPage.value === 1) {
+            // 获取一次大量数据来统计总数
+            const countParams = { ...params, skip: 0, limit: 10000 }
+            const countRes = await api.get('/measurements/search', { params: countParams })
+            totalCount.value = countRes.data.length
+            chartData.value = countRes.data  // 用于图表
+            console.log('Total count:', totalCount.value)
+        }
+        
+        if (viewMode.value === 'chart') {
+            nextTick(initChart)
+        }
+    } catch (e) {
+        console.error('Fetch error:', e)
+        alert('查询数据失败: ' + (e.response?.data?.detail || e.message || '未知错误'))
+    }
+}
+
+const changePage = (delta) => {
+    currentPage.value += delta
+    fetchData(false)
+}
+
+const initChart = () => {
+    if (!chartDiv.value) return
+    
+    if (chartInstance.value) {
+        chartInstance.value.dispose()
+    }
+    chartInstance.value = echarts.init(chartDiv.value)
+    
+    // 使用 chartData（包含更多数据用于绘图）
+    let dataToPlot = chartData.value
+    
+    // 如果没有选择时间范围且数据量很大，只显示最近一部分数据
+    if (!dataFilters.startTime && !dataFilters.endTime && dataToPlot.length > 500) {
+        // 按时间排序后取最近500条
+        dataToPlot = [...dataToPlot].sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 500)
+    }
+    
+    // Group by point
+    const grouped = {}
+    dataToPlot.forEach(m => {
+        const name = m.point_name || m.point_code
+        if (!grouped[name]) grouped[name] = []
+        grouped[name].push([m.time, m.value])
+    })
+    
+    // Series
+    const series = Object.keys(grouped).map(name => ({
+        name,
+        type: 'line',
+        showSymbol: dataToPlot.length < 200,
+        data: grouped[name].sort((a,b) => new Date(a[0]) - new Date(b[0]))
+    }))
+    
+    const option = {
+        title: { text: '监测数据趋势' },
+        tooltip: { trigger: 'axis' },
+        legend: { data: Object.keys(grouped), type: 'scroll' },
+        xAxis: { type: 'time' },
+        yAxis: { type: 'value', scale: true }, // scale: true 让Y轴不从0开始
+        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+        dataZoom: [
+            { type: 'slider', show: true },
+            { type: 'inside' }
+        ],
+        series
+    }
+    chartInstance.value.setOption(option)
+}
+
+const openDataModal = (data) => {
+    isDataEditing.value = !!data
+    if (data) {
+        Object.assign(dataForm, {
+            id: data.id,
+            point_code: data.point_code,
+            value: data.value,
+            time: data.time ? data.time.slice(0, 16) : '',
+            measurement_type: data.measurement_type
+        })
+    } else {
+        Object.assign(dataForm, {
+            id: null,
+            point_code: points.value.length > 0 ? points.value[0].point_code : '',
+            value: 0,
+            time: new Date().toISOString().slice(0, 16),
+            measurement_type: ''
+        })
+    }
+    showDataModal.value = true
+}
+
+const saveData = async () => {
+    try {
+        const payload = { ...dataForm }
+        if (payload.time) payload.time = new Date(payload.time).toISOString()
+        
+        if (isDataEditing.value) {
+            await api.put(`/measurements/${payload.id}`, payload)
+        } else {
+            await api.post('/measurements/', payload)
+        }
+        showDataModal.value = false
+        fetchData()
+    } catch (e) {
+        console.error(e)
+        alert('保存失败: ' + (e.response?.data?.detail || e.message))
+    }
+}
+
+const deleteData = async (id) => {
+    if(!confirm('确定删除这条数据吗？')) return
+    try {
+        await api.delete(`/measurements/${id}`)
+        fetchData()
+    } catch (e) {
+        console.error(e)
+        alert('删除失败')
+    }
+}
 
 const goBack = () => router.push('/')
 
@@ -551,5 +866,37 @@ onMounted(() => {
   justify-content: flex-end;
   gap: 16px;
   margin-top: 24px;
+}
+
+.view-mode-toggle {
+    display: flex;
+    gap: 0;
+    border: 1px solid #1890ff;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-left: 16px;
+}
+.toggle-btn {
+    padding: 6px 16px;
+    border: none;
+    background: #fff;
+    cursor: pointer;
+    color: #1890ff;
+}
+.toggle-btn.active {
+    background: #1890ff;
+    color: #fff;
+}
+.filter-input {
+    padding: 8px;
+    border: 1px solid #d9d9d9;
+    border-radius: 4px;
+    /* width: 140px; */
+}
+.chart-wrapper {
+    margin-top: 20px;
+    background: #fff;
+    padding: 10px;
+    border: 1px solid #f0f0f0;
 }
 </style>

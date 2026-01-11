@@ -54,6 +54,11 @@ class MeasurementCreate(BaseModel):
     time: Optional[datetime.datetime] = None
     measurement_type: Optional[str] = None 
 
+class MeasurementUpdate(BaseModel):
+    value: Optional[float] = None
+    time: Optional[datetime.datetime] = None
+    measurement_type: Optional[str] = None
+
 class MeasurementOut(MeasurementCreate):
     id: int
     time: datetime.datetime
@@ -61,6 +66,9 @@ class MeasurementOut(MeasurementCreate):
     measurement_type: Optional[str] = None
     class Config:
         from_attributes = True
+
+class MeasurementSearchOut(MeasurementOut):
+    point_name: Optional[str] = None
 
 class MonitorPointOut(BaseModel):
     point_code: str

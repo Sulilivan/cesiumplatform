@@ -47,6 +47,14 @@
           >
             HDR
           </div>
+           <!-- 恢复视角按钮 -->
+          <div 
+            class="icon-btn btn-reset" 
+            @click="$emit('reset-view')"
+            title="恢复默认视角"
+          >
+            复位
+          </div>
         </div>
 
         <div class="divider"></div>
@@ -401,5 +409,37 @@ onMounted(() => {
 .point-status.normal {
   background: rgba(82, 196, 26, 0.2);
   color: #52c41a;
+}
+
+/* 复位按钮黄色样式 - 需求 4 */
+.btn-reset {
+    color: #ffeb3b !important;
+    border-color: rgba(255, 235, 59, 0.3) !important;
+    background: rgba(255, 235, 59, 0.1) !important;
+    font-weight: bold;
+}
+
+.btn-reset:hover {
+    background: rgba(255, 235, 59, 0.3) !important;
+    box-shadow: 0 0 10px #ffeb3b !important;
+    color: #fff !important;
+}
+
+/* 隐形滚动条样式 - 需求 5 */
+.panel-content::-webkit-scrollbar {
+  width: 4px; /* 很细 */
+}
+
+.panel-content::-webkit-scrollbar-track {
+  background: transparent; 
+}
+
+.panel-content::-webkit-scrollbar-thumb {
+  background: rgba(0, 160, 233, 0.2); 
+  border-radius: 2px;
+}
+
+.panel-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 160, 233, 0.5); 
 }
 </style>

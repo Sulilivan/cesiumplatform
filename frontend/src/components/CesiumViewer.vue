@@ -83,7 +83,31 @@ const handleSidebarSelect = (point) => {
   highlightTileFeature(point)
   
   if (point) {
-    updateInfoBoxForPoint(point)
+    // 只有绑定了模型的测点才显示气泡和飞向
+    if (point.bind_model_id && viewerRef.value) {
+        updateInfoBoxForPoint(point)
+        // Calculate offset position: Move to North, Look South
+        const offsetLat = 0.0005; 
+        const offsetHeight = 30;
+
+        viewerRef.value.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(
+                point.longitude, 
+                point.latitude + offsetLat,
+                (point.height || 0) + offsetHeight
+            ),
+            orientation: {
+                heading: Cesium.Math.toRadians(180),
+                pitch: Cesium.Math.toRadians(-20),
+                roll: 0.0
+            },
+            duration: 1.5
+        });
+    } else {
+        // 未绑定的测点：隐藏气泡，重置视角
+        infoBoxVisible.value = false
+        if (window.resetView) window.resetView()
+    }
   } else {
     infoBoxVisible.value = false
   }
@@ -94,10 +118,10 @@ const highlightTileFeature = (point) => {
 
   
   // 优先使用数据库中的绑定ID
-  let targetModelId = point.bind_model_id
+  let targetModelId = point ? point.bind_model_id : null
   
   // 如果没绑定，尝试使用旧的映射
-  if (!targetModelId) {
+  if (!targetModelId && point) {
       targetModelId = point.point_code
       for (const [key, val] of Object.entries(POINT_MAPPING)) {
         if (val === point.point_code) {
@@ -127,7 +151,9 @@ const highlightTileFeature = (point) => {
 const updateInfoBoxForPoint = (point) => {
     if(viewerRef.value && point.longitude && point.latitude) {
         const position = Cesium.Cartesian3.fromDegrees(point.longitude, point.latitude, point.height || 0)
-        const canvasPosition = Cesium.SceneTransforms.wgs84ToWindowCoordinates(viewerRef.value.scene, position)
+        // 使用 updated API for newer Cesium versions or fallback
+        const scene = viewerRef.value.scene;
+        const canvasPosition = Cesium.SceneTransforms.worldToWindowCoordinates(scene, position);
         if (canvasPosition) {
             infoBoxPosition.x = canvasPosition.x
             infoBoxPosition.y = canvasPosition.y - 50 
@@ -141,7 +167,9 @@ const updateInfoBoxPositionOnRender = () => {
     
     const point = selectedPoint.value
     const position = Cesium.Cartesian3.fromDegrees(point.longitude, point.latitude, (point.height || 0))
-    const canvasPosition = Cesium.SceneTransforms.wgs84ToWindowCoordinates(viewerRef.value.scene, position)
+    // Use updated API
+    const scene = viewerRef.value.scene;
+    const canvasPosition = Cesium.SceneTransforms.worldToWindowCoordinates(scene, position);
     
     if (canvasPosition) {
         infoBoxPosition.x = canvasPosition.x 
@@ -246,18 +274,24 @@ onMounted(async () => {
     // viewer.zoomTo(tileset);
 
     // 设置自定义视角
-    viewer.camera.setView({
-      destination: Cesium.Cartesian3.fromDegrees(
-        101.656054, // 经度
-        28.296000,  // 纬度
-        3000        // 高度（米），比原来高，便于俯瞰整体
-      ),
-      orientation: {
-        heading: Cesium.Math.toRadians(225), // 朝向正南，绕Z轴旋转180°
-        pitch: Cesium.Math.toRadians(-40),   // 俯视角度，-90为正下，-60为较大俯视
-        roll: 0
-      }
-    });
+    const setDefaultView = () => {
+      viewer.camera.setView({
+        destination: Cesium.Cartesian3.fromDegrees(
+          101.656054, // 经度
+          28.296000,  // 纬度
+          3000        // 高度（米），比原来高，便于俯瞰整体
+        ),
+        orientation: {
+          heading: Cesium.Math.toRadians(225), // 朝向正南，绕Z轴旋转180°
+          pitch: Cesium.Math.toRadians(-40),   // 俯视角度，-90为正下，-60为较大俯视
+          roll: 0
+        }
+      });
+    }
+    setDefaultView() // 初始化调用
+
+    // 暴露给 DashboardLayer 调用
+    window.resetView = setDefaultView
   } catch (error) {
     console.error(`加载本地 3D Tileset 失败: ${error}`);
   }
@@ -284,17 +318,31 @@ onMounted(async () => {
         // --- 绑定模式逻辑 ---
         if (isBindingMode.value && bindingPointCode.value) {
             if (finalFeatureId) {
+                // 获取点击位置作为测点的新坐标
+                const cartesian = viewer.scene.pickPosition(movement.position);
+                let newCoords = {};
+                if (Cesium.defined(cartesian)) {
+                    const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
+                    newCoords = {
+                        longitude: Cesium.Math.toDegrees(cartographic.longitude),
+                        latitude: Cesium.Math.toDegrees(cartographic.latitude),
+                        height: cartographic.height
+                    };
+                }
+
                 if (confirm(`确定将测点 ${bindingPointCode.value} 绑定到构件 ${finalFeatureId} 吗？`)) {
                     try {
                         const point = allPoints.value.find(p => p.point_code === bindingPointCode.value)
-                        // 更新后端
-                        // 注意：这里需要后端支持 PUT /points/{code} 或者专门的 bind 接口
-                        // 我们之前实现了 standard PUT
-                        const updateData = { ...point, bind_model_id: finalFeatureId }
-                        // 移除只读或不需要传回的字段 (created_at 等 if any, but our schema handles extra fields gracefully usually or strip them)
-                        // 简单起见，只传 bind_model_id 如果后端支持 partial update，但我们的 backend impl 是 replace loop.
-                        // Wait, backend `point_update` iterates items. So passing partial dict works!
-                        await api.put(`/points/${bindingPointCode.value}`, { bind_model_id: finalFeatureId })
+                        
+                        // 同时更新 bind_model_id 和 坐标
+                        const updatePayload = { 
+                            bind_model_id: finalFeatureId 
+                        }
+                        if (newCoords.longitude) {
+                            Object.assign(updatePayload, newCoords)
+                        }
+
+                        await api.put(`/points/${bindingPointCode.value}`, updatePayload)
                         
                         // 更新前端数据
                         await fetchPoints()
@@ -353,21 +401,26 @@ onMounted(async () => {
                  // Toggle logic: If already selected, deselect. - 需求 1
                  if (selectedPoint.value && selectedPoint.value.point_code === targetPointCode) {
                      handleSidebarSelect(null);
+                     setDefaultView(); // 1. Deselect returns to default view
                  } else {
                      handleSidebarSelect(point);
                  }
              } else {
                  console.warn('找到代码但未找到测点数据:', targetPointCode);
+                 handleSidebarSelect(null); // 清除选中
+                 setDefaultView(); // 1. Unknown code returns to default view
              }
         } else {
              console.warn('未能匹配到测点代码');
-             // 如果点击了模型但没匹配到，也许应该清除选中？
-             // handleSidebarSelect(null); 
+             // 如果点击了模型但没匹配到，清除选中
+             handleSidebarSelect(null); 
+             setDefaultView(); // 1. Unbound model click returns to default view
         }
 
     } else {
         // console.log('未点击到 3D Tile Feature');
         handleSidebarSelect(null);
+        setDefaultView(); // 1. Click empty space returns to default view (if desired, but usually good practice to reset state)
     }
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 

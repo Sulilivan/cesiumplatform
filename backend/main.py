@@ -50,6 +50,128 @@ def read_points(current_user: models.User = Depends(auth.get_current_active_user
     points = db.query(models.MonitorPoint).all()
     return points
 
+# === 静态路由必须放在动态路由 {point_code} 之前 ===
+
+@app.get("/measurements/search", response_model=list[schemas.MeasurementSearchOut])
+def search_measurements(
+    start_time: datetime = Query(None),
+    end_time: datetime = Query(None),
+    device_type: str = Query(None),
+    point_name: str = Query(None),
+    skip: int = 0,
+    limit: int = 200,
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    from sqlalchemy import or_
+    # 由于 Measurement.point_code 格式如 'IP3左右岸'，MonitorPoint.point_code 格式如 'IP3'
+    # 需要使用 LIKE 匹配
+    query = db.query(models.Measurement)
+    
+    if start_time:
+        query = query.filter(models.Measurement.time >= start_time)
+    if end_time:
+        query = query.filter(models.Measurement.time <= end_time)
+    
+    # 如果有设备类型或测点名筛选，需要先获取符合条件的测点编号前缀
+    if device_type or point_name:
+        point_query = db.query(models.MonitorPoint)
+        if device_type:
+            point_query = point_query.filter(models.MonitorPoint.device_type == device_type)
+        if point_name:
+            point_query = point_query.filter(models.MonitorPoint.point_name.like(f"%{point_name}%"))
+        matching_points = point_query.all()
+        matching_codes = [p.point_code for p in matching_points]
+        
+        if matching_codes:
+            # 使用 OR 条件匹配 point_code 前缀
+            conditions = [models.Measurement.point_code.like(f"{code}%") for code in matching_codes]
+            query = query.filter(or_(*conditions))
+        else:
+            # 没有匹配的测点，返回空
+            return []
+    
+    results = query.order_by(models.Measurement.time.desc()).offset(skip).limit(limit).all()
+    
+    # 获取所有测点信息用于映射
+    all_points = {p.point_code: p for p in db.query(models.MonitorPoint).all()}
+    
+    mapped_results = []
+    for m in results:
+        # 尝试匹配测点：从 'IP3左右岸' 提取 'IP3'
+        matched_point = None
+        for code, point in all_points.items():
+            if m.point_code.startswith(code):
+                matched_point = point
+                break
+        
+        out = schemas.MeasurementSearchOut(
+            id=m.id,
+            point_code=m.point_code,
+            value=m.value,
+            time=m.time,
+            device_type=matched_point.device_type if matched_point else None,
+            point_name=matched_point.point_name if matched_point else m.point_code,
+            measurement_type=m.measurement_type
+        )
+        mapped_results.append(out)
+        
+    return mapped_results
+
+@app.get("/measurements/latest", response_model=list[schemas.MeasurementLatest])
+def get_all_latest_measurements(current_user: models.User = Depends(auth.get_current_active_user), db: Session = Depends(get_db)):
+    subquery = db.query(
+        models.Measurement.point_code,
+        func.max(models.Measurement.time).label('max_time')
+    ).group_by(models.Measurement.point_code).subquery()
+    
+    latest_data = db.query(models.Measurement).join(
+        subquery,
+        (models.Measurement.point_code == subquery.c.point_code) &
+        (models.Measurement.time == subquery.c.max_time)
+    ).all()
+    
+    result = []
+    for measurement in latest_data:
+        point = db.query(models.MonitorPoint).filter(
+            models.MonitorPoint.point_code == measurement.point_code
+        ).first()
+        result.append(schemas.MeasurementLatest(
+            point_code=measurement.point_code,
+            point_name=point.point_name if point else measurement.point_code,
+            value=measurement.value,
+            time=measurement.time
+        ))
+    
+    return result
+
+@app.post("/measurements/batch", response_model=list[schemas.MeasurementOut])
+def create_measurements_batch(batch: schemas.MeasurementBatch, current_user: models.User = Depends(auth.get_current_admin_user), db: Session = Depends(get_db)):
+    result = []
+    for item in batch.measurements:
+        point = db.query(models.MonitorPoint).filter(
+            models.MonitorPoint.point_code == item.point_code
+        ).first()
+        if not point:
+            continue
+        
+        db_item = models.Measurement(
+            point_code=item.point_code,
+            value=item.value,
+            time=item.time or datetime.now(),
+            measurement_type=item.measurement_type
+        )
+        db.add(db_item)
+        result.append(db_item)
+    
+    db.commit()
+    for item in result:
+        db.refresh(item)
+    
+    return result
+
+# === 动态路由 ===
+
 # 2. 获取指定测点的历史数据 (用于 ECharts 折线图) [cite: 20]
 @app.get("/measurements/{point_code}", response_model=list[schemas.MeasurementOut])
 def read_measurements(point_code: str, current_user: models.User = Depends(auth.get_current_active_user), db: Session = Depends(get_db)):
@@ -164,57 +286,32 @@ def get_measurements_by_range(
     
     return result
 
-@app.post("/measurements/batch", response_model=list[schemas.MeasurementOut])
-def create_measurements_batch(batch: schemas.MeasurementBatch, current_user: models.User = Depends(auth.get_current_admin_user), db: Session = Depends(get_db)):
-    result = []
-    for item in batch.measurements:
-        point = db.query(models.MonitorPoint).filter(
-            models.MonitorPoint.point_code == item.point_code
-        ).first()
-        if not point:
-            continue
-        
-        db_item = models.Measurement(
-            point_code=item.point_code,
-            value=item.value,
-            time=item.time or datetime.now(),
-            measurement_type=item.measurement_type
-        )
-        db.add(db_item)
-        result.append(db_item)
+@app.put("/measurements/{measurement_id}", response_model=schemas.MeasurementOut)
+def update_measurement(measurement_id: int, item: schemas.MeasurementUpdate, current_user: models.User = Depends(auth.get_current_admin_user), db: Session = Depends(get_db)):
+    db_item = db.query(models.Measurement).filter(models.Measurement.id == measurement_id).first()
+    if not db_item:
+        raise HTTPException(status_code=404, detail="数据不存在")
+    
+    if item.value is not None:
+        db_item.value = item.value
+    if item.time:
+        db_item.time = item.time
+    if item.measurement_type is not None:
+        db_item.measurement_type = item.measurement_type
     
     db.commit()
-    for item in result:
-        db.refresh(item)
-    
-    return result
+    db.refresh(db_item)
+    return db_item
 
-@app.get("/measurements/latest", response_model=list[schemas.MeasurementLatest])
-def get_all_latest_measurements(current_user: models.User = Depends(auth.get_current_active_user), db: Session = Depends(get_db)):
-    subquery = db.query(
-        models.Measurement.point_code,
-        func.max(models.Measurement.time).label('max_time')
-    ).group_by(models.Measurement.point_code).subquery()
+@app.delete("/measurements/{measurement_id}")
+def delete_measurement(measurement_id: int, current_user: models.User = Depends(auth.get_current_admin_user), db: Session = Depends(get_db)):
+    db_item = db.query(models.Measurement).filter(models.Measurement.id == measurement_id).first()
+    if not db_item:
+        raise HTTPException(status_code=404, detail="数据不存在")
     
-    latest_data = db.query(models.Measurement).join(
-        subquery,
-        (models.Measurement.point_code == subquery.c.point_code) &
-        (models.Measurement.time == subquery.c.max_time)
-    ).all()
-    
-    result = []
-    for measurement in latest_data:
-        point = db.query(models.MonitorPoint).filter(
-            models.MonitorPoint.point_code == measurement.point_code
-        ).first()
-        result.append(schemas.MeasurementLatest(
-            point_code=measurement.point_code,
-            point_name=point.point_name if point else measurement.point_code,
-            value=measurement.value,
-            time=measurement.time
-        ))
-    
-    return result
+    db.delete(db_item)
+    db.commit()
+    return {"message": "删除成功"}
 
 @app.get("/measurements/{point_code}/latest", response_model=schemas.MeasurementLatest)
 def get_latest_measurement(point_code: str, current_user: models.User = Depends(auth.get_current_active_user), db: Session = Depends(get_db)):
