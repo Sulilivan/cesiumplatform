@@ -27,6 +27,7 @@
     <SidebarRight 
       :pointCode="currentPointCode"
       :pointName="currentPointName"
+      @bind-model="(code) => emit('bind-model', code)"
     />
 
     <BottomBar :coords="coords" />
@@ -48,7 +49,7 @@ const props = defineProps({
   currentPointName: String
 })
 
-const emit = defineEmits(['update:settings', 'select-point'])
+const emit = defineEmits(['update:settings', 'select-point', 'bind-model'])
 const router = useRouter()
 const isAdmin = ref(false)
 
@@ -146,10 +147,10 @@ onMounted(() => {
   color: #fff;
   padding: 5px 15px;
   cursor: pointer;
-  clip-path: polygon(10px 0, 100% 0, 100% 100%, 0 100%, 0 10px);
+  border-radius: 4px; /* 圆角矩形 */
   transition: all 0.3s;
   font-size: 14px;
-  display: flex; /* 统一布局 */
+  display: flex;
   align-items: center;
   justify-content: center;
   min-width: 60px;

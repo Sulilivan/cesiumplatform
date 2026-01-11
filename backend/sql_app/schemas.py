@@ -17,6 +17,15 @@ class PointCreate(BaseModel):
     longitude: float
     latitude: float
     height: float
+    bind_model_id: Optional[str] = None
+
+class PointUpdate(BaseModel):
+    point_name: Optional[str] = None
+    device_type: Optional[str] = None
+    longitude: Optional[float] = None
+    latitude: Optional[float] = None
+    height: Optional[float] = None
+    bind_model_id: Optional[str] = None
 
 class UserLogin(BaseModel):
     username: str
@@ -60,6 +69,7 @@ class MonitorPointOut(BaseModel):
     latitude: float
     height: float
     device_type: str
+    bind_model_id: Optional[str] = None
     class Config:
         from_attributes = True
 

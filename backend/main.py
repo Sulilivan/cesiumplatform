@@ -102,40 +102,11 @@ def read_point_detail(point_code: str, current_user: models.User = Depends(auth.
         data_count=data_count
     )
 
-@app.post("/points/", response_model=schemas.MonitorPointOut)
-def create_point(item: schemas.PointCreate, current_user: models.User = Depends(auth.get_current_admin_user), db: Session = Depends(get_db)):
-    existing_point = db.query(models.MonitorPoint).filter(models.MonitorPoint.point_code == item.point_code).first()
-    if existing_point:
-        raise HTTPException(status_code=400, detail="测点代码已存在")
-    
-    db_point = models.MonitorPoint(**item.model_dump())
-    db.add(db_point)
-    db.commit()
-    db.refresh(db_point)
-    return db_point
 
-@app.put("/points/{point_code}", response_model=schemas.MonitorPointOut)
-def update_point(point_code: str, item: schemas.PointCreate, current_user: models.User = Depends(auth.get_current_admin_user), db: Session = Depends(get_db)):
-    point = db.query(models.MonitorPoint).filter(models.MonitorPoint.point_code == point_code).first()
-    if not point:
-        raise HTTPException(status_code=404, detail="测点不存在")
-    
-    for key, value in item.model_dump().items():
-        setattr(point, key, value)
-    
-    db.commit()
-    db.refresh(point)
-    return point
 
-@app.delete("/points/{point_code}")
-def delete_point(point_code: str, current_user: models.User = Depends(auth.get_current_admin_user), db: Session = Depends(get_db)):
-    point = db.query(models.MonitorPoint).filter(models.MonitorPoint.point_code == point_code).first()
-    if not point:
-        raise HTTPException(status_code=404, detail="测点不存在")
-    
-    db.delete(point)
-    db.commit()
-    return {"message": "测点删除成功"}
+
+
+
 
 @app.get("/measurements/{point_code}/stats", response_model=schemas.MeasurementStats)
 def get_measurement_stats(point_code: str, current_user: models.User = Depends(auth.get_current_active_user), db: Session = Depends(get_db)):
@@ -455,6 +426,52 @@ def delete_user(
     if not success:
         raise HTTPException(status_code=404, detail="用户不存在")
     return {"message": "用户删除成功"}
+
+@app.post("/auth/users", response_model=schemas.UserResponse)
+def create_user(
+    user: schemas.UserCreate,
+    current_user: models.User = Depends(auth.get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    db_user = crud.get_user_by_username(db, username=user.username)
+    if db_user:
+        raise HTTPException(status_code=400, detail="用户名已存在")
+    return crud.create_user(db=db, user=user)
+
+@app.post("/points/", response_model=schemas.MonitorPointOut)
+def create_point(
+    point: schemas.PointCreate,
+    current_user: models.User = Depends(auth.get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    db_point = crud.get_point_by_code(db, point_code=point.point_code)
+    if db_point:
+        raise HTTPException(status_code=400, detail="测点编号已存在")
+    return crud.create_point(db=db, point=point)
+
+@app.put("/points/{point_code}", response_model=schemas.MonitorPointOut)
+def update_point(
+    point_code: str,
+    point_update: schemas.PointUpdate,
+    current_user: models.User = Depends(auth.get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    # 简单的验证，如果包含bind_model_id，也允许修改
+    db_point = crud.update_point(db, point_code=point_code, point_update=point_update.model_dump(exclude_unset=True))
+    if not db_point:
+        raise HTTPException(status_code=404, detail="测点不存在")
+    return db_point
+
+@app.delete("/points/{point_code}")
+def delete_point(
+    point_code: str,
+    current_user: models.User = Depends(auth.get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    success = crud.delete_point(db, point_code=point_code)
+    if not success:
+        raise HTTPException(status_code=404, detail="测点不存在")
+    return {"message": "测点删除成功"}
 
 @app.get("/inverted-plumb/{point_code}", response_model=list[schemas.InvertedPlumbDataOut])
 def read_inverted_plumb_data(

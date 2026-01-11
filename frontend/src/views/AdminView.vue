@@ -26,8 +26,7 @@
       <div v-if="currentTab === 'users'" class="panel">
         <div class="panel-header">
           <h2>用户管理</h2>
-          <!-- 暂时不支持前端注册新管理员，只能查看和删除，或者简单的添加 -->
-          <!-- <button class="btn-primary" @click="showAddUserAPI">添加用户</button> -->
+          <button class="btn-primary" @click="openUserModal(null)">添加用户</button>
         </div>
         <table class="admin-table">
           <thead>
@@ -52,6 +51,7 @@
               </td>
               <td>{{ user.is_active ? '激活' : '禁用' }}</td>
               <td>
+                <button class="btn-edit" @click="openUserModal(user)">编辑</button>
                 <button 
                   v-if="user.username !== 'admin'" 
                   class="btn-danger" 
@@ -113,6 +113,41 @@
       </div>
     </div>
 
+    <div v-if="showUserModal" class="modal-overlay">
+      <div class="modal">
+        <h3>{{ isEditingUser ? '编辑用户' : '添加用户' }}</h3>
+        <form @submit.prevent="saveUser">
+          <div class="form-group">
+            <label>用户名</label>
+            <input v-model="userForm.username" :disabled="isEditingUser" required>
+          </div>
+          <div class="form-group" v-if="!isEditingUser">
+            <label>密码</label>
+            <input type="password" v-model="userForm.password" required>
+          </div>
+           <div class="form-group" v-if="isEditingUser">
+            <label>重置密码 (留空如果不修改)</label>
+            <input type="password" v-model="userForm.password">
+          </div>
+          <div class="form-group">
+            <label>邮箱</label>
+            <input type="email" v-model="userForm.email" required>
+          </div>
+          <div class="form-group">
+            <label>角色</label>
+            <select v-model="userForm.role">
+                <option value="user">普通用户</option>
+                <option value="admin">管理员</option>
+            </select>
+          </div>
+          <div class="modal-actions">
+            <button type="button" @click="showUserModal = false">取消</button>
+            <button type="submit" class="btn-primary">保存</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <!-- 测点编辑/添加弹窗 -->
     <div v-if="showPointModal" class="modal-overlay">
       <div class="modal">
@@ -169,6 +204,8 @@ const users = ref([])
 const points = ref([])
 const showPointModal = ref(false)
 const isEditing = ref(false)
+const showUserModal = ref(false)
+const isEditingUser = ref(false)
 const pointTypeFilter = ref('')
 
 // 根据类型筛选测点
@@ -188,6 +225,14 @@ const pointForm = reactive({
   height: 0
 })
 
+const userForm = reactive({
+    id: null,
+    username: '',
+    password: '',
+    email: '',
+    role: 'user'
+})
+
 const goBack = () => router.push('/')
 
 const fetchUsers = async () => {
@@ -200,23 +245,67 @@ const fetchUsers = async () => {
   }
 }
 
+const openUserModal = (user) => {
+    isEditingUser.value = !!user
+    if (user) {
+        Object.assign(userForm, {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            role: user.role,
+            password: ''
+        })
+    } else {
+        Object.assign(userForm, {
+            id: null,
+            username: '',
+            email: '',
+            role: 'user',
+            password: ''
+        })
+    }
+    showUserModal.value = true
+}
+
+const saveUser = async () => {
+    try {
+        if (isEditingUser.value) {
+            const updateData = {
+                email: userForm.email,
+                role: userForm.role
+            }
+            if (userForm.password) {
+                updateData.password = userForm.password
+            }
+            await api.put(`/auth/users/${userForm.id}`, updateData)
+        } else {
+            await api.post('/auth/users', userForm)
+        }
+        showUserModal.value = false
+        fetchUsers()
+    } catch (e) {
+        console.error(e)
+        alert('保存失败: ' + (e.response?.data?.detail || e.message))
+    }
+}
+
+const deleteUser = async (id) => {
+    if(!confirm('确定删除该用户吗？')) return
+    try {
+        await api.delete(`/auth/users/${id}`)
+        fetchUsers()
+    } catch (e) {
+        console.error(e)
+        alert('删除失败')
+    }
+}
+
 const fetchPoints = async () => {
   try {
     const res = await api.get('/points/')
     points.value = res.data
   } catch (e) {
     console.error(e)
-  }
-}
-
-const deleteUser = async (id) => {
-  if(!confirm('确定删除该用户吗？')) return
-  try {
-    await api.delete(`/auth/users/${id}`)
-    fetchUsers()
-  } catch (e) {
-    console.error(e)
-    alert('删除失败')
   }
 }
 

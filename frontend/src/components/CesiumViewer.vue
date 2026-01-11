@@ -18,6 +18,7 @@
     :currentPointName="selectedPoint?.point_name"
     @update:settings="updateSettings"
     @select-point="handleSidebarSelect"
+    @bind-model="handleBindModel"
   />
 </template>
 
@@ -40,8 +41,10 @@ const mouseCoords = ref('经度: --, 纬度: --, 高程: --米')
 const allPoints = ref([])
 const infoBoxVisible = ref(false)
 const infoBoxPosition = reactive({ x: 0, y: 0 })
+const isBindingMode = ref(false)
+const bindingPointCode = ref(null)
 
-// 测点编号映射关系
+// 测点编号映射关系 (保留以兼容旧数据或硬编码部分，优先使用数据库绑定)
 const POINT_MAPPING = {
   'PL1': 'IP1',
   'IP2': 'IP2',
@@ -69,6 +72,12 @@ const fetchPoints = async () => {
   }
 }
 
+const handleBindModel = (pointCode) => {
+    isBindingMode.value = true
+    bindingPointCode.value = pointCode
+    alert('进入绑定模式：请点击场景中的模型构件进行绑定')
+}
+
 const handleSidebarSelect = (point) => {
   selectedPoint.value = point
   highlightTileFeature(point)
@@ -83,27 +92,34 @@ const handleSidebarSelect = (point) => {
 const highlightTileFeature = (point) => {
   if (!tilesetRef.value) return
 
-  if (!point) {
-    tilesetRef.value.style = new Cesium.Cesium3DTileStyle({
-       color: 'color("white")' 
-    })
-    return
+  
+  // 优先使用数据库中的绑定ID
+  let targetModelId = point.bind_model_id
+  
+  // 如果没绑定，尝试使用旧的映射
+  if (!targetModelId) {
+      targetModelId = point.point_code
+      for (const [key, val] of Object.entries(POINT_MAPPING)) {
+        if (val === point.point_code) {
+          targetModelId = key
+          break
+        }
+      }
   }
 
-  let targetModelId = point.point_code
-  for (const [key, val] of Object.entries(POINT_MAPPING)) {
-    if (val === point.point_code) {
-      targetModelId = key
-      break
-    }
+  // 构建样式条件
+  // 注意：如果 targetModelId 是 undefined，则不应高亮
+  const conditions = [
+      ['true', 'color("white")'] 
+  ]
+  
+  if (targetModelId) {
+      conditions.unshift([`\${ElementProxyCommonReference} === '${targetModelId}'`, 'color("red")'])
   }
 
   tilesetRef.value.style = new Cesium.Cesium3DTileStyle({
     color: {
-      conditions: [
-        [`\${ElementProxyCommonReference} === '${targetModelId}'`, 'color("red")'], 
-        ['true', 'color("white")'] 
-      ]
+      conditions: conditions
     }
   })
 }
@@ -248,7 +264,7 @@ onMounted(async () => {
 
   // 点击事件处理
   const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
-  handler.setInputAction(function (movement) {
+  handler.setInputAction(async function (movement) {
     const pickedObject = viewer.scene.pick(movement.position);
     
     // 调试日志：查看点击到了什么
@@ -263,14 +279,61 @@ onMounted(async () => {
         
         console.log('Picked Feature Properties:', { refId, name1, name, elementId });
         
+        const finalFeatureId = refId || name1 || name || elementId
+
+        // --- 绑定模式逻辑 ---
+        if (isBindingMode.value && bindingPointCode.value) {
+            if (finalFeatureId) {
+                if (confirm(`确定将测点 ${bindingPointCode.value} 绑定到构件 ${finalFeatureId} 吗？`)) {
+                    try {
+                        const point = allPoints.value.find(p => p.point_code === bindingPointCode.value)
+                        // 更新后端
+                        // 注意：这里需要后端支持 PUT /points/{code} 或者专门的 bind 接口
+                        // 我们之前实现了 standard PUT
+                        const updateData = { ...point, bind_model_id: finalFeatureId }
+                        // 移除只读或不需要传回的字段 (created_at 等 if any, but our schema handles extra fields gracefully usually or strip them)
+                        // 简单起见，只传 bind_model_id 如果后端支持 partial update，但我们的 backend impl 是 replace loop.
+                        // Wait, backend `point_update` iterates items. So passing partial dict works!
+                        await api.put(`/points/${bindingPointCode.value}`, { bind_model_id: finalFeatureId })
+                        
+                        // 更新前端数据
+                        await fetchPoints()
+                        
+                        alert('绑定成功！')
+                        // 重新选中以刷新高亮
+                        const newPoint = allPoints.value.find(p => p.point_code === bindingPointCode.value)
+                        handleSidebarSelect(newPoint)
+                    } catch (e) {
+                        console.error(e)
+                        alert('绑定失败: ' + e.message)
+                    } finally {
+                        isBindingMode.value = false
+                        bindingPointCode.value = null
+                    }
+                }
+            } else {
+                alert('未识别到有效的构件ID，无法绑定')
+            }
+            return // 绑定模式下不处理后续点击逻辑
+        }
+        // ------------------
+        
         let targetPointCode = null;
 
-        // 1. 尝试通过 ElementProxyCommonReference 匹配
-        if (refId && POINT_MAPPING[refId]) {
+        // 0. 优先尝试通过数据库绑定的 ID 匹配
+        if (finalFeatureId) {
+             const boundPoint = allPoints.value.find(p => p.bind_model_id === finalFeatureId)
+             if (boundPoint) {
+                 targetPointCode = boundPoint.point_code
+             }
+        }
+
+        // 1. 尝试通过 ElementProxyCommonReference 匹配 (兼容旧)
+        if (!targetPointCode && refId && POINT_MAPPING[refId]) {
              targetPointCode = POINT_MAPPING[refId];
         } 
         // 2. 如果没有直接匹配，尝试从 name_1 解析 (例如 "IP:IP2:253389" -> "IP2")
-        else if (name1) {
+        else if (!targetPointCode && name1) {
              const parts = name1.split(':');
              if (parts.length >= 2) {
                  const potentialDetails = parts[1]; // 取中间部分

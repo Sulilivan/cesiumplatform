@@ -1,54 +1,63 @@
 <template>
-  <div class="sidebar-right" :class="{ 'collapsed': !pointCode }">
-    <div class="panel-header">
-      <div class="title">{{ pointName || '测点详情' }}</div>
+  <div class="sidebar-wrapper" :class="{ collapsed: isCollapsed }">
+    <div class="toggle-btn" @click="toggleSidebar" title="收起/展开">
+      {{ isCollapsed ? '◀' : '▶' }}
     </div>
-    
-    <div class="panel-content">
-      <div v-if="pointCode">
-        <!-- 实时数据表格 -->
-        <div class="section-title">实时监测数据</div>
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>指标</th>
-                    <th>数值</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>{{ isWaterLevel ? '最新水位' : '最新位移' }}</td>
-                    <td class="value">{{ latestData.value !== undefined ? latestData.value : '--' }} <span class="unit">{{ unit }}</span></td>
-                </tr>
-                <tr>
-                    <td>监测时间</td>
-                    <td>{{ formatDate(latestData.time) }}</td>
-                </tr>
-                <tr>
-                    <td>最大值</td>
-                    <td>{{ stats.max_value !== undefined ? stats.max_value : '--' }} <span class="unit">{{ unit }}</span></td>
-                </tr>
-                <tr>
-                    <td>最小值</td>
-                    <td>{{ stats.min_value !== undefined ? stats.min_value : '--' }} <span class="unit">{{ unit }}</span></td>
-                </tr>
-                <tr>
-                    <td>平均值</td>
-                    <td>{{ stats.avg_value ? stats.avg_value.toFixed(2) : '--' }} <span class="unit">{{ unit }}</span></td>
-                </tr>
-            </tbody>
-        </table>
 
-        <div class="divider"></div>
-
-        <!-- 历史趋势图表 -->
-        <div class="section-title">历史变化趋势</div>
-        <div class="chart-container">
-          <v-chart class="chart" :option="chartOption" autoresize />
-        </div>
+    <div class="sidebar-right">
+      <div class="panel-header">
+        <div class="title">{{ pointName || '测点详情' }}</div>
+        <button v-if="pointCode" class="bind-btn" @click="$emit('bind-model', pointCode)" title="绑定3D模型">
+          🔗
+        </button>
       </div>
-      <div v-else class="empty-state">
-        <p>请在左侧选择一个测点查看详情</p>
+      
+      <div class="panel-content">
+        <div v-if="pointCode">
+          <!-- 实时数据表格 -->
+          <div class="section-title">实时监测数据</div>
+          <table class="data-table">
+              <thead>
+                  <tr>
+                      <th>指标</th>
+                      <th>数值</th>
+                  </tr>
+              </thead>
+              <tbody>
+                  <tr>
+                      <td>{{ isWaterLevel ? '最新水位' : '最新位移' }}</td>
+                      <td class="value">{{ latestData.value !== undefined ? latestData.value : '--' }} <span class="unit">{{ unit }}</span></td>
+                  </tr>
+                  <tr>
+                      <td>监测时间</td>
+                      <td>{{ formatDate(latestData.time) }}</td>
+                  </tr>
+                  <tr>
+                      <td>最大值</td>
+                      <td>{{ stats.max_value !== undefined ? stats.max_value : '--' }} <span class="unit">{{ unit }}</span></td>
+                  </tr>
+                  <tr>
+                      <td>最小值</td>
+                      <td>{{ stats.min_value !== undefined ? stats.min_value : '--' }} <span class="unit">{{ unit }}</span></td>
+                  </tr>
+                  <tr>
+                      <td>平均值</td>
+                      <td>{{ stats.avg_value ? stats.avg_value.toFixed(2) : '--' }} <span class="unit">{{ unit }}</span></td>
+                  </tr>
+              </tbody>
+          </table>
+
+          <div class="divider"></div>
+
+          <!-- 历史趋势图表 -->
+          <div class="section-title">历史变化趋势</div>
+          <div class="chart-container">
+            <v-chart class="chart" :option="chartOption" autoresize />
+          </div>
+        </div>
+        <div v-else class="empty-state">
+          <p>请在左侧选择一个测点查看详情</p>
+        </div>
       </div>
     </div>
   </div>
@@ -82,9 +91,22 @@ const props = defineProps({
   pointName: String
 })
 
+const isCollapsed = ref(true) // Default collapsed
 const latestData = ref({})
 const stats = ref({})
 const historyData = ref([])
+
+const toggleSidebar = () => {
+  isCollapsed.value = !isCollapsed.value
+}
+
+// Watch pointCode to auto-expand
+watch(() => props.pointCode, (newVal) => {
+  if (newVal) {
+    isCollapsed.value = false
+    fetchData()
+  }
+}, { immediate: true })
 
 // 判断是否为水位测点
 const isWaterLevel = computed(() => {
@@ -168,22 +190,14 @@ const fetchData = async () => {
   if (!props.pointCode) return
   
   try {
-    // 1. 获取最新数据
     const resLatest = await api.get(`/measurements/${props.pointCode}/latest`)
     latestData.value = resLatest.data
     
-    // 2. 获取统计数据
     const resStats = await api.get(`/measurements/${props.pointCode}/stats`)
     stats.value = resStats.data
     
-    // 3. 获取历史数据 (最近 20 条用于绘图) - API 可能需要 limit 支持，暂取全部然后截取
-    // 注意：这里使用的是 range 接口或者默认的 measurements 列表接口
-    // 假设后端 /measurements/{code} 返回列表
     const resHistory = await api.get(`/measurements/${props.pointCode}`)
-    // 取最近 50 条并反转顺序（如果是降序返回）若后端是升序则直接用
-    // 假设后端是按时间排序的
     let data = resHistory.data
-    // 如果数据量太大，截取一部分
     if (data.length > 50) {
         data = data.slice(data.length - 50) 
     }
@@ -191,57 +205,93 @@ const fetchData = async () => {
 
   } catch (error) {
     console.error("Fetch point data error:", error)
-    // 重置数据
     latestData.value = {}
     stats.value = {}
     historyData.value = []
   }
 }
-
-watch(() => props.pointCode, (newVal) => {
-  if (newVal) {
-    fetchData()
-  }
-}, { immediate: true })
-
 </script>
 
 <style scoped>
-.sidebar-right {
+.sidebar-wrapper {
   position: absolute;
   right: 20px;
   top: 100px;
-  bottom: 20px;
+  bottom: 90px;
   width: 350px;
+  transition: width 0.3s, transform 0.3s;
+  pointer-events: auto;
+  z-index: 10;
+}
+
+.sidebar-wrapper.collapsed {
+  transform: translateX(375px); /* Move entirely off screen (width + toggle button + margin) */
+}
+
+.toggle-btn {
+  position: absolute;
+  left: -25px; /* Position on left side of the sidebar */
+  top: 50%;
+  width: 25px;
+  height: 50px;
+  background: rgba(10, 25, 50, 0.8);
+  color: #00e5ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-top-left-radius: 8px; /* Symmetric custom radius */
+  border-bottom-left-radius: 8px;
+  font-size: 12px;
+  border: 1px solid rgba(0, 160, 233, 0.3);
+  border-right: none; /* Remove border adjacent to sidebar */
+  pointer-events: auto;
+}
+
+.sidebar-right {
+  width: 100%;
+  height: 100%;
   background: rgba(10, 25, 50, 0.8);
   border: 1px solid rgba(0, 160, 233, 0.3);
   box-shadow: 0 0 35px rgba(0, 160, 233, 0.5);
   display: flex;
   flex-direction: column;
   backdrop-filter: blur(10px);
-  transition: transform 0.3s ease-in-out;
-  border-radius: 12px; /* 圆角 - 需求 3 */
+  border-radius: 8px; /* Symmetric rounded corners */
 }
 
-.sidebar-right.collapsed {
-  transform: translateX(400px); /* 移出屏幕 */
-}
-
+/* Internal Styles */
 .panel-header {
   height: 50px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 160, 233, 0.1);
+  background: rgba(0, 160, 233, 0.1); /* Match header style if needed, or keep transparent */
+  /* SidebarLeft uses panel-header too but slightly different structure. Keeping SidebarRight's original internal look but wrapped. */
   border-bottom: 1px solid rgba(0, 160, 233, 0.3);
   border-top-left-radius: 8px;
   border-top-right-radius: 8px;
+  padding: 0 10px;
 }
 
 .title {
   color: #00e5ff;
   font-size: 18px;
   font-weight: bold;
+}
+
+.bind-btn {
+  background: transparent;
+  border: 1px solid #00e5ff;
+  color: #00e5ff;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: auto;
+  padding: 2px 8px;
+}
+
+.bind-btn:hover {
+  background: rgba(0, 229, 255, 0.2);
 }
 
 .panel-content {

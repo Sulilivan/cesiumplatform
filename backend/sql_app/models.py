@@ -25,6 +25,7 @@ class MonitorPoint(Base):
     longitude = Column(Float, comment="经度")
     latitude = Column(Float, comment="纬度")
     height = Column(Float, comment="高程")
+    bind_model_id = Column(String, nullable=True, comment="绑定的3D模型构件ID")
 
     measurements = relationship("Measurement", back_populates="point")
     inverted_plumb_data = relationship("InvertedPlumbData", back_populates="point")
