@@ -12,8 +12,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "axios": "^1.7.2",
     "cesium": "^1.136.0",
+    "echarts": "^5.5.1",
     "vue": "^3.5.25",
+    "vue-echarts": "^7.0.3",
     "vue-router": "^4.6.3"
   },
   "devDependencies": {

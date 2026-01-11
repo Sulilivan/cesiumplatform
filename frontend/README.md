@@ -17,23 +17,36 @@
 - **构建工具**: Vite 7.2.4
 - **三维引擎**: Cesium 1.136.0
 - **路由**: Vue Router 4.6.3
-- **图表**: ECharts 6.0.0
-- **HTTP**: Axios 1.13.2
+- **图表**: ECharts 5.5.1 + vue-echarts 7.0.3
+- **HTTP**: Axios 1.7.2
 
 ## 快速开始
 
-### 环境要求
+### 方式一：Docker 运行（推荐）
+
+> 在项目根目录执行，无需单独启动前端。
+
+```bash
+# 在项目根目录（cesiumapartment）执行
+docker-compose up --build
+```
+
+前端服务将在 http://localhost:5173 启动。
+
+### 方式二：本地运行
+
+#### 环境要求
 
 - Node.js ^20.19.0 或 >=22.12.0
 - npm 或 yarn
 
-### 安装依赖
+#### 安装依赖
 
 ```bash
 npm install
 ```
 
-### 启动开发服务器
+#### 启动开发服务器
 
 ```bash
 npm run dev
@@ -41,17 +54,23 @@ npm run dev
 
 开发服务器启动后访问: http://localhost:5173
 
-### 生产构建
+#### 生产构建
 
 ```bash
 npm run build
 ```
 
-### 预览构建结果
+#### 预览构建结果
 
 ```bash
 npm run preview
 ```
+
+### 注意事项
+
+1. **后端服务必须先启动**：前端依赖后端 API，请确保后端在 http://localhost:8000 运行
+2. **首次安装较慢**：`npm install` 需要下载 Cesium 等大型依赖，请耐心等待
+3. **Node.js 版本**：请使用 Node.js 20.x 或 22.x，其他版本可能不兼容
 
 ## 项目结构
 

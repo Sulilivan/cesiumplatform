@@ -54,17 +54,63 @@ cesiumapartment/
 
 ## 快速开始
 
-### 环境要求
+本项目支持两种运行方式：**Docker 运行**（推荐）和 **本地运行**。
 
-- Node.js >= 20.19.0
-- Python >= 3.8
-- npm 或 yarn
+---
 
-### 1. 启动后端
+### 方式一：Docker 运行（推荐）
+
+> 适合有 Docker 环境的用户，一键启动，无需配置环境。
+
+#### 环境要求
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) 已安装并运行
+
+#### 启动步骤
 
 ```bash
+# 1. 进入项目根目录
+cd cesiumapartment
+
+# 2. 构建并启动所有服务（首次需要构建，较慢）
+docker-compose up --build
+
+# 或后台运行
+docker-compose up -d --build
+```
+
+#### 访问地址
+- **前端界面**: http://localhost:5173
+- **后端 API 文档**: http://localhost:8000/docs
+
+#### 停止服务
+```bash
+docker-compose down
+```
+
+---
+
+### 方式二：本地运行（无需 Docker）
+
+> 适合没有 Docker 的用户，需要分别启动前端和后端。
+
+#### 环境要求
+
+| 软件 | 版本要求 | 下载地址 |
+|------|----------|----------|
+| Node.js | >= 20.19.0 | https://nodejs.org/ |
+| Python | >= 3.8 | https://www.python.org/ |
+| npm | 随 Node.js 安装 | - |
+
+#### 1. 启动后端
+
+```bash
+# 进入后端目录
 cd backend
+
+# 安装 Python 依赖
 pip install -r requirements.txt
+
+# 启动后端服务
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
@@ -72,15 +118,22 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 - API 文档: http://localhost:8000/docs
 - ReDoc 文档: http://localhost:8000/redoc
 
-### 2. 启动前端
+#### 2. 启动前端
 
 ```bash
+# 新开一个终端，进入前端目录
 cd frontend
+
+# 安装 Node.js 依赖
 npm install
+
+# 启动前端开发服务器
 npm run dev
 ```
 
 前端服务启动后访问: http://localhost:5173
+
+---
 
 ### 3. 默认账号
 

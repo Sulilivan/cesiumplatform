@@ -15,18 +15,31 @@
 
 ## 快速开始
 
-### 环境要求
+### 方式一：Docker 运行（推荐）
+
+> 在项目根目录执行，无需单独启动后端。
+
+```bash
+# 在项目根目录（cesiumapartment）执行
+docker-compose up --build
+```
+
+后端 API 将在 http://localhost:8000 启动。
+
+### 方式二：本地运行
+
+#### 环境要求
 
 - Python 3.8+
 - pip
 
-### 安装依赖
+#### 安装依赖
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 启动服务
+#### 启动服务
 
 ```bash
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
@@ -35,6 +48,12 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 服务启动后访问:
 - API 文档: http://localhost:8000/docs
 - ReDoc 文档: http://localhost:8000/redoc
+
+### 注意事项
+
+1. **数据库文件**：首次运行会自动创建 `water_platform.db` 数据库文件
+2. **初始化数据**：运行 `python init_db.py` 可初始化测点和用户数据
+3. **默认账号**：admin / admin123
 
 ## 项目结构
 
