@@ -32,6 +32,7 @@
       :chartRange="chartRange"
       :selectedFeature="selectedFeature"
       :hasBoundModel="!!currentPointBindId"
+      :isAdmin="isAdmin"
       @bind-model="(code) => emit('bind-model', code)"
       @unbind-model="(code) => emit('unbind-model', code)"
     />
@@ -76,6 +77,13 @@ const onTimeChange = (newTime) => {
             window.cesiumViewer.clock.currentTime = julianDate
             // 可选：如果需要光照根据时间变化，确保场景刷新
             window.cesiumViewer.scene.requestRender()
+            
+            // 更新上游水位显示（南侧水体）
+            if (window.updateSouthWaterByTime) {
+                window.updateSouthWaterByTime(newTime)
+            } else {
+                console.warn('水位更新函数尚未初始化')
+            }
         } catch (e) {
             console.error('Failed to sync time to Cesium:', e)
         }

@@ -3,7 +3,7 @@
     <div class="sidebar-right">
       <div class="panel-header">
         <div class="title">{{ panelTitle }}</div>
-        <div class="header-buttons" v-if="pointCode">
+        <div class="header-buttons" v-if="pointCode && isAdmin">
           <button v-if="hasBoundModel" class="unbind-btn" @click="$emit('unbind-model', pointCode)" title="解除绑定">
             ❌
           </button>
@@ -195,7 +195,8 @@ const props = defineProps({
     default: 7 // 默认显示7天
   },
   selectedFeature: Object, // 未绑定构件信息
-  hasBoundModel: Boolean // 是否已绑定模型（从父组件传入）
+  hasBoundModel: Boolean, // 是否已绑定模型（从父组件传入）
+  isAdmin: Boolean // 是否为管理员用户
 })
 
 // 面板标题
