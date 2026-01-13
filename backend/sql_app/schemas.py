@@ -72,11 +72,11 @@ class MeasurementSearchOut(MeasurementOut):
 
 class MonitorPointOut(BaseModel):
     point_code: str
-    point_name: str
-    longitude: float
-    latitude: float
-    height: float
-    device_type: str
+    point_name: Optional[str] = None
+    longitude: Optional[float] = None
+    latitude: Optional[float] = None
+    height: Optional[float] = None
+    device_type: Optional[str] = None
     bind_model_id: Optional[str] = None
     class Config:
         from_attributes = True

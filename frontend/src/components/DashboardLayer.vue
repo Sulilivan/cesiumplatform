@@ -30,7 +30,10 @@
       :pointName="currentPointName"
       :selectedTime="selectedTime"
       :chartRange="chartRange"
+      :selectedFeature="selectedFeature"
+      :hasBoundModel="!!currentPointBindId"
       @bind-model="(code) => emit('bind-model', code)"
+      @unbind-model="(code) => emit('unbind-model', code)"
     />
 
     <BottomBar 
@@ -54,10 +57,12 @@ const props = defineProps({
   settings: Object,
   coords: String,
   currentPointCode: String,
-  currentPointName: String
+  currentPointName: String,
+  currentPointBindId: String, // 当前测点绑定的模型ID
+  selectedFeature: Object // 未绑定构件信息
 })
 
-const emit = defineEmits(['update:settings', 'select-point', 'bind-model'])
+const emit = defineEmits(['update:settings', 'select-point', 'bind-model', 'unbind-model'])
 const router = useRouter()
 const isAdmin = ref(false)
 const selectedTime = ref(new Date()) // 时间轴选中的时间

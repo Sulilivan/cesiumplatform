@@ -16,9 +16,12 @@
     :coords="mouseCoords"
     :currentPointCode="selectedPoint?.point_code"
     :currentPointName="selectedPoint?.point_name"
+    :currentPointBindId="selectedPoint?.bind_model_id"
+    :selectedFeature="selectedFeature"
     @update:settings="updateSettings"
     @select-point="handleSidebarSelect"
     @bind-model="handleBindModel"
+    @unbind-model="handleUnbindModel"
   />
 </template>
 
@@ -37,6 +40,7 @@ const router = useRouter() // 获取 router 实例
 const viewerRef = ref(null)
 const tilesetRef = ref(null)
 const selectedPoint = ref(null)
+const selectedFeature = ref(null) // 未绑定构件信息
 const mouseCoords = ref('经度: --, 纬度: --, 高程: --米')
 const allPoints = ref([])
 const infoBoxVisible = ref(false)
@@ -78,8 +82,36 @@ const handleBindModel = (pointCode) => {
     alert('进入绑定模式：请点击场景中的模型构件进行绑定')
 }
 
+const handleUnbindModel = async (pointCode) => {
+    if (!pointCode) return
+    
+    if (confirm(`确定要解除测点 ${pointCode} 与3D模型的绑定吗？`)) {
+        try {
+            await api.put(`/points/${pointCode}`, { 
+                bind_model_id: null,
+                longitude: null,
+                latitude: null,
+                height: null
+            })
+            
+            // 更新前端数据
+            await fetchPoints()
+            
+            // 重新选中以刷新显示
+            const newPoint = allPoints.value.find(p => p.point_code === pointCode)
+            handleSidebarSelect(newPoint)
+            
+            alert('解绑成功！')
+        } catch (e) {
+            console.error(e)
+            alert('解绑失败: ' + e.message)
+        }
+    }
+}
+
 const handleSidebarSelect = (point) => {
   selectedPoint.value = point
+  selectedFeature.value = null // 清除构件选中
   highlightTileFeature(point)
   
   if (point) {
@@ -145,6 +177,49 @@ const highlightTileFeature = (point) => {
     color: {
       conditions: conditions
     }
+  })
+}
+
+// 高亮未绑定的构件（仅选中构件变半透明，其他保持不变）
+// 使用多个属性尝试匹配
+const highlightUnboundFeature = (featureId, featureInfo) => {
+  if (!tilesetRef.value) return
+  
+  if (!featureId) {
+    // 清除高亮
+    tilesetRef.value.style = new Cesium.Cesium3DTileStyle({
+      color: { conditions: [['true', 'color("white")']] }
+    })
+    return
+  }
+
+  // 构建多条件匹配（尝试多个属性名）
+  const conditions = []
+  
+  // 优先使用 ElementProxyCommonReference
+  if (featureInfo && featureInfo.refId && featureInfo.refId !== '--') {
+    conditions.push([`\${ElementProxyCommonReference} === '${featureInfo.refId}'`, 'color("cyan", 0.5)'])
+  }
+  
+  // 尝试 name_1
+  if (featureInfo && featureInfo.name1 && featureInfo.name1 !== '--') {
+    conditions.push([`\${name_1} === '${featureInfo.name1}'`, 'color("cyan", 0.5)'])
+  }
+  
+  // 尝试 name
+  if (featureInfo && featureInfo.name && featureInfo.name !== '--') {
+    conditions.push([`\${name} === '${featureInfo.name}'`, 'color("cyan", 0.5)'])
+  }
+
+  // 兜底：直接用 featureId
+  if (conditions.length === 0) {
+    conditions.push([`\${ElementProxyCommonReference} === '${featureId}'`, 'color("cyan", 0.5)'])
+  }
+  
+  conditions.push(['true', 'color("white")'])
+
+  tilesetRef.value.style = new Cesium.Cesium3DTileStyle({
+    color: { conditions: conditions }
   })
 }
 
@@ -388,26 +463,52 @@ onMounted(async () => {
                  // Toggle logic: If already selected, deselect. - 需求 1
                  if (selectedPoint.value && selectedPoint.value.point_code === targetPointCode) {
                      handleSidebarSelect(null);
-                     setDefaultView(); // 1. Deselect returns to default view
+                     if (window.resetView) window.resetView(); // 1. Deselect returns to default view
                  } else {
                      handleSidebarSelect(point);
                  }
              } else {
                  console.warn('找到代码但未找到测点数据:', targetPointCode);
                  handleSidebarSelect(null); // 清除选中
-                 setDefaultView(); // 1. Unknown code returns to default view
+                 if (window.resetView) window.resetView(); // 1. Unknown code returns to default view
              }
         } else {
-             console.warn('未能匹配到测点代码');
-             // 如果点击了模型但没匹配到，清除选中
-             handleSidebarSelect(null); 
-             setDefaultView(); // 1. Unbound model click returns to default view
+             console.warn('未能匹配到测点代码，显示构件信息');
+             // 未绑定的构件：高亮显示，显示构件信息，不跳转视角
+             selectedPoint.value = null
+             infoBoxVisible.value = false
+             
+             // 获取构件的所有属性
+             const featureInfo = {
+                 id: finalFeatureId || '未知',
+                 refId: refId || '--',
+                 name: name || '--',
+                 name1: name1 || '--',
+                 elementId: elementId || '--'
+             }
+             
+             // 尝试获取更多属性
+             try {
+                 const propertyIds = pickedObject.getPropertyIds ? pickedObject.getPropertyIds() : []
+                 featureInfo.allProperties = {}
+                 propertyIds.forEach(id => {
+                     featureInfo.allProperties[id] = pickedObject.getProperty(id)
+                 })
+             } catch (e) {
+                 console.warn('获取构件属性失败:', e)
+             }
+             
+             selectedFeature.value = featureInfo
+             
+             // 高亮该构件（使用半透明蓝色）
+             highlightUnboundFeature(finalFeatureId, featureInfo)
         }
 
     } else {
         // console.log('未点击到 3D Tile Feature');
         handleSidebarSelect(null);
-        setDefaultView(); // 1. Click empty space returns to default view (if desired, but usually good practice to reset state)
+        selectedFeature.value = null
+        // 点击空白处不改变视角，保持当前视角
     }
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 

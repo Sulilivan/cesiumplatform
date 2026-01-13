@@ -1,14 +1,20 @@
 <template>
-  <div class="sidebar-wrapper" :class="{ collapsed: !pointCode }">
+  <div class="sidebar-wrapper" :class="{ collapsed: !pointCode && !selectedFeature }">
     <div class="sidebar-right">
       <div class="panel-header">
-        <div class="title">{{ pointName || '测点详情' }}</div>
-        <button v-if="pointCode" class="bind-btn" @click="$emit('bind-model', pointCode)" title="绑定3D模型">
-          🔗
-        </button>
+        <div class="title">{{ panelTitle }}</div>
+        <div class="header-buttons" v-if="pointCode">
+          <button v-if="hasBoundModel" class="unbind-btn" @click="$emit('unbind-model', pointCode)" title="解除绑定">
+            ❌
+          </button>
+          <button class="bind-btn" @click="$emit('bind-model', pointCode)" title="绑定3D模型">
+            🔗
+          </button>
+        </div>
       </div>
       
       <div class="panel-content">
+        <!-- 已绑定测点的显示 -->
         <div v-if="pointCode">
           <!-- 当前时间的监测值（根据时间轴） -->
           <div class="section-title">
@@ -77,6 +83,75 @@
             <v-chart class="chart" :option="chartOption" autoresize />
           </div>
         </div>
+        
+        <!-- 未绑定构件的显示 -->
+        <div v-else-if="selectedFeature" class="feature-info">
+          <div class="section-title">
+            构件标识
+          </div>
+          <div class="feature-id-card">
+            <div class="feature-id">{{ selectedFeature.id }}</div>
+            <div class="feature-status">未绑定测点</div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="section-title">
+            构件属性
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>属性名</th>
+                <th>属性值</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="selectedFeature.refId !== '--'">
+                <td>ElementProxyCommonReference</td>
+                <td class="value">{{ selectedFeature.refId }}</td>
+              </tr>
+              <tr v-if="selectedFeature.name !== '--'">
+                <td>name</td>
+                <td class="value">{{ selectedFeature.name }}</td>
+              </tr>
+              <tr v-if="selectedFeature.name1 !== '--'">
+                <td>name_1</td>
+                <td class="value">{{ selectedFeature.name1 }}</td>
+              </tr>
+              <tr v-if="selectedFeature.elementId !== '--'">
+                <td>elementId</td>
+                <td class="value">{{ selectedFeature.elementId }}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- 显示所有其他属性 -->
+          <div v-if="selectedFeature.allProperties && Object.keys(selectedFeature.allProperties).length > 0">
+            <div class="divider"></div>
+            <div class="section-title">
+              全部属性
+            </div>
+            <div class="all-properties">
+              <div 
+                v-for="(value, key) in selectedFeature.allProperties" 
+                :key="key" 
+                class="property-item"
+              >
+                <span class="property-key">{{ key }}:</span>
+                <span class="property-value">{{ formatPropertyValue(value) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="feature-hint">
+            <span class="hint-icon">💡</span>
+            <span>此构件尚未绑定监测点，可在左侧选择测点后点击"🔗"按钮进行绑定</span>
+          </div>
+        </div>
+
         <div v-else class="empty-state">
           <div class="empty-icon">📍</div>
           <p>请在左侧选择一个测点查看详情</p>
@@ -118,8 +193,29 @@ const props = defineProps({
   chartRange: {
     type: Number,
     default: 7 // 默认显示7天
-  }
+  },
+  selectedFeature: Object, // 未绑定构件信息
+  hasBoundModel: Boolean // 是否已绑定模型（从父组件传入）
 })
+
+// 面板标题
+const panelTitle = computed(() => {
+  if (props.pointCode) {
+    return props.pointName || '测点详情'
+  } else if (props.selectedFeature) {
+    return '构件信息'
+  }
+  return '详情面板'
+})
+
+// 格式化属性值（处理对象和数组）
+const formatPropertyValue = (value) => {
+  if (value === null || value === undefined) return '--'
+  if (typeof value === 'object') {
+    return JSON.stringify(value)
+  }
+  return String(value)
+}
 
 const latestData = ref({})
 const stats = ref({})
@@ -423,18 +519,37 @@ const fetchData = async () => {
   font-weight: bold;
 }
 
+.header-buttons {
+  display: flex;
+  gap: 5px;
+  margin-left: auto;
+}
+
 .bind-btn {
   background: transparent;
   border: 1px solid #00e5ff;
   color: #00e5ff;
   border-radius: 4px;
   cursor: pointer;
-  margin-left: auto;
   padding: 2px 8px;
 }
 
 .bind-btn:hover {
   background: rgba(0, 229, 255, 0.2);
+}
+
+.unbind-btn {
+  background: transparent;
+  border: 1px solid #ff6b6b;
+  color: #ff6b6b;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.unbind-btn:hover {
+  background: rgba(255, 107, 107, 0.2);
 }
 
 .panel-content {
@@ -608,5 +723,108 @@ const fetchData = async () => {
 
 .panel-content::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 160, 233, 0.5); 
+}
+
+/* 构件信息样式 */
+.feature-info {
+  padding: 5px 0;
+}
+
+.feature-id-card {
+  background: linear-gradient(135deg, rgba(0, 191, 255, 0.15) 0%, rgba(0, 160, 233, 0.08) 100%);
+  border: 1px solid rgba(0, 191, 255, 0.3);
+  border-radius: 8px;
+  padding: 15px;
+  text-align: center;
+}
+
+.feature-id {
+  font-size: 16px;
+  font-weight: bold;
+  color: #00bfff;
+  word-break: break-all;
+  margin-bottom: 8px;
+}
+
+.feature-status {
+  font-size: 12px;
+  color: rgba(255, 193, 7, 0.9);
+  background: rgba(255, 193, 7, 0.15);
+  padding: 3px 10px;
+  border-radius: 10px;
+  display: inline-block;
+}
+
+.all-properties {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  padding: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* 全部属性区域滚动条样式 */
+.all-properties::-webkit-scrollbar {
+  width: 4px;
+}
+
+.all-properties::-webkit-scrollbar-track {
+  background: transparent; 
+}
+
+.all-properties::-webkit-scrollbar-thumb {
+  background: rgba(0, 160, 233, 0.2); 
+  border-radius: 2px;
+}
+
+.all-properties::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 160, 233, 0.5); 
+}
+
+.property-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 11px;
+}
+
+.property-item:last-child {
+  border-bottom: none;
+}
+
+.property-key {
+  color: rgba(255, 255, 255, 0.6);
+  flex-shrink: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.property-value {
+  color: #00e5ff;
+  text-align: right;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feature-hint {
+  background: rgba(255, 235, 59, 0.08);
+  border: 1px solid rgba(255, 235, 59, 0.2);
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.hint-icon {
+  font-size: 14px;
+  flex-shrink: 0;
 }
 </style>

@@ -12,8 +12,8 @@
         <div class="header-decoration-right"></div>
       </div>
       
-      <div class="panel-content">
-        <!-- 场景控制部分：改为圆形半透明图标 - 需求 4 -->
+      <!-- 场景控制部分：固定不滚动 -->
+      <div class="control-section">
         <div class="control-icons">
           <div 
             class="icon-btn" 
@@ -59,9 +59,13 @@
 
         <div class="divider"></div>
 
+        <div class="list-header">监测列表</div>
+      </div>
+
+      <!-- 测点列表部分：可滚动 -->
+      <div class="panel-content">
         <!-- 分类测点列表 -->
         <div class="point-list-container">
-          <div class="list-header">监测列表</div>
           <div class="category-list">
             <div 
               v-for="category in categories" 
@@ -272,7 +276,13 @@ onMounted(() => {
 .panel-content {
   flex: 1;
   overflow-y: auto;
+  padding: 0 15px 15px 15px;
+}
+
+/* 控制区域固定不滚动 */
+.control-section {
   padding: 15px;
+  flex-shrink: 0;
 }
 
 /* 控制图标样式 - 需求 4 */
