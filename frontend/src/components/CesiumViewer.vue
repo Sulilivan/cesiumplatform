@@ -187,24 +187,21 @@ onMounted(async () => {
     sceneModePicker: false,
     navigationHelpButton: false,
     animation: false,
-    timeline: false,
+    timeline: false,  // 隐藏原生时间轴，使用自定义BottomBar
     fullscreenButton: false,
     vrButton: false,
     selectionIndicator: false,  // 关闭选择指示器
     infoBox: false,             // 关闭原生信息框
     automaticallyTrackDataSourceClocks: false,
-    // 去掉右上角地图选择 - 需求 5
-    fullscreenButton: false, // 去掉右下角全屏按钮 - 需求 5
-    timeline: true,
-    geocoder: false,         // 关闭搜索
-    homeButton: false,
-    navigationHelpButton: false,
     terrain: Cesium.Terrain.fromWorldTerrain({requestVertexNormals: true}), 
-    shadows: settings.shadows,// filepath: d:\github\cesiumapartment\frontend\src\components\CesiumViewer.vue
+    shadows: settings.shadows,
   })
 
   viewerRef.value = viewer
   viewer.scene.postRender.addEventListener(updateInfoBoxPositionOnRender)
+
+  // 暴露viewer供外部同步时间
+  window.cesiumViewer = viewer
 
   // 提高阴影质量
   viewer.shadowMap.size = 4096; // 提高阴影分辨率
@@ -233,22 +230,6 @@ onMounted(async () => {
 
   // 隐藏 Cesium logo
   viewer._cesiumWidget._creditContainer.style.display = 'none'
-
-  // 时间轴样式
-  viewer.timeline.makeLabel = DateTimeFormatter
-  function DateTimeFormatter(datetime) {
-    const julianDT = new Cesium.JulianDate()
-    Cesium.JulianDate.addHours(datetime, 8, julianDT) // 东八区
-    const date = Cesium.JulianDate.toGregorianDate(julianDT)
-    let objDT = date.year + '/' + date.month + '/' + date.day + ' ' + date.hour + ':00'
-    return objDT
-  }
-
-  const date = Cesium.JulianDate.fromDate(new Date())
-  viewer.timeline.zoomTo(
-    Cesium.JulianDate.addHours(date, -24, new Cesium.JulianDate()),
-    Cesium.JulianDate.addHours(date, 24, new Cesium.JulianDate())
-  )
 
   // 导入本地模型并定位
   try {
@@ -595,17 +576,5 @@ onMounted(async () => {
   top: 90px !important;       /* 避开顶部标题栏 */
   right: 360px !important;    /* 避开右侧面板 (320px + 20px padding + buffer) */
   max-width: 400px;
-}
-
-/* 上移时间轴，防止被底部栏遮挡 */
-:deep(.cesium-viewer-timelineContainer) {
-  bottom: 40px !important;    /* 底部栏高度 */
-  left: 0 !important;
-  right: 0 !important;
-}
-
-/* 同时也调整底部其他控件的位置（如果有的话） */
-:deep(.cesium-viewer-bottom) {
-  bottom: 40px !important;
 }
 </style>

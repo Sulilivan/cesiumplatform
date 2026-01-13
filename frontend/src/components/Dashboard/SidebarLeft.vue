@@ -8,7 +8,7 @@
     <div class="sidebar-left" v-show="!isCollapsed">
       <div class="panel-header">
         <div class="header-decoration-left"></div>
-        <div class="title">场景控制 & 测点列表</div>
+        <div class="title">场景视觉控制</div>
         <div class="header-decoration-right"></div>
       </div>
       
@@ -61,7 +61,7 @@
 
         <!-- 分类测点列表 -->
         <div class="point-list-container">
-          <div class="list-header">监测项目</div>
+          <div class="list-header">监测列表</div>
           <div class="category-list">
             <div 
               v-for="category in categories" 

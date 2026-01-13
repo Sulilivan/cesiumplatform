@@ -28,20 +28,27 @@
     <SidebarRight
       :pointCode="currentPointCode"
       :pointName="currentPointName"
+      :selectedTime="selectedTime"
+      :chartRange="chartRange"
       @bind-model="(code) => emit('bind-model', code)"
     />
 
-    <BottomBar :coords="coords" />
+    <BottomBar 
+      :coords="coords" 
+      v-model="selectedTime"
+      v-model:chartRange="chartRange"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import SidebarLeft from './Dashboard/SidebarLeft.vue'
 import SidebarRight from './Dashboard/SidebarRight.vue'
 import BottomBar from './Dashboard/BottomBar.vue'
 import { useRouter } from 'vue-router'
 import * as apiUtils from '@/utils/api.js'
+import * as Cesium from 'cesium'
 
 const props = defineProps({
   settings: Object,
@@ -53,6 +60,27 @@ const props = defineProps({
 const emit = defineEmits(['update:settings', 'select-point', 'bind-model'])
 const router = useRouter()
 const isAdmin = ref(false)
+const selectedTime = ref(new Date()) // 时间轴选中的时间
+const chartRange = ref(7) // 图表显示的天数范围
+
+// 时间改变时同步到 Cesium 场景
+const onTimeChange = (newTime) => {
+    if (window.cesiumViewer && newTime instanceof Date) {
+        try {
+            const julianDate = Cesium.JulianDate.fromDate(newTime)
+            window.cesiumViewer.clock.currentTime = julianDate
+            // 可选：如果需要光照根据时间变化，确保场景刷新
+            window.cesiumViewer.scene.requestRender()
+        } catch (e) {
+            console.error('Failed to sync time to Cesium:', e)
+        }
+    }
+}
+
+// 监听 selectedTime 变化
+watch(selectedTime, (newTime) => {
+    onTimeChange(newTime)
+})
 
 const updateSettings = (newSettings) => {
   emit('update:settings', newSettings)
