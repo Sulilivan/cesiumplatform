@@ -24,14 +24,26 @@
 
 ### 方式一：Docker 运行（推荐）
 
-> 在项目根目录执行，无需单独启动前端。
+#### 使用 Docker Hub 镜像（生产环境）
+
+```bash
+# 拉取并运行前端镜像
+docker pull rayansullivan/water-platform-frontend:latest
+docker run -d -p 3000:3000 --name water-frontend rayansullivan/water-platform-frontend:latest
+```
+
+生产版本前端将在 http://localhost:3000 启动。
+
+**Docker Hub 地址**: https://hub.docker.com/r/rayansullivan/water-platform-frontend
+
+#### 使用 Docker Compose 开发环境（在项目根目录）
 
 ```bash
 # 在项目根目录（cesiumapartment）执行
 docker-compose up --build
 ```
 
-前端服务将在 http://localhost:5173 启动。
+开发版本前端将在 http://localhost:5173 启动（支持热重载）。
 
 ### 方式二：本地运行
 

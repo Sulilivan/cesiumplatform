@@ -17,7 +17,15 @@
 
 ### 方式一：Docker 运行（推荐）
 
-> 在项目根目录执行，无需单独启动后端。
+#### 使用 Docker Hub 镜像
+
+```bash
+# 拉取并运行后端镜像
+docker pull rayansullivan/water-platform-backend:latest
+docker run -d -p 8000:8000 --name water-backend rayansullivan/water-platform-backend:latest
+```
+
+#### 使用 Docker Compose（在项目根目录）
 
 ```bash
 # 在项目根目录（cesiumapartment）执行
@@ -25,6 +33,8 @@ docker-compose up --build
 ```
 
 后端 API 将在 http://localhost:8000 启动。
+
+**Docker Hub 地址**: https://hub.docker.com/r/rayansullivan/water-platform-backend
 
 ### 方式二：本地运行
 

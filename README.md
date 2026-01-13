@@ -170,34 +170,59 @@ npm run dev
 
 ## Docker 部署
 
-### 前端镜像
+### Docker Hub 镜像
+
+本项目已发布到 Docker Hub：
+
+| 镜像 | 地址 |
+|------|------|
+| 后端 | `rayansullivan/water-platform-backend` |
+| 前端 | `rayansullivan/water-platform-frontend` |
+
+### 快速拉取并运行
 
 ```bash
-docker pull rayansullivan/cesiumapartment:latest
-docker run -p 3000:3000 rayansullivan/cesiumapartment:latest
+# 拉取镜像
+docker pull rayansullivan/water-platform-backend:latest
+docker pull rayansullivan/water-platform-frontend:latest
+
+# 运行后端
+docker run -d -p 8000:8000 --name water-backend rayansullivan/water-platform-backend:latest
+
+# 运行前端
+docker run -d -p 3000:3000 --name water-frontend rayansullivan/water-platform-frontend:latest
 ```
 
-### 完整部署
+### 完整部署（推荐）
 
-推荐使用 Docker Compose 进行完整部署：
+使用 Docker Compose 进行完整部署：
 
 ```yaml
 version: '3.8'
 services:
+  backend:
+    image: rayansullivan/water-platform-backend:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - water-db:/app/data
+    restart: unless-stopped
+
   frontend:
-    image: rayansullivan/cesiumapartment:latest
+    image: rayansullivan/water-platform-frontend:latest
     ports:
       - "3000:3000"
     depends_on:
       - backend
-  
-  backend:
-    build: ./backend
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./backend/water_platform.db:/app/water_platform.db
+    restart: unless-stopped
+
+volumes:
+  water-db:
 ```
+
+访问地址：
+- 前端界面: http://localhost:3000
+- 后端 API: http://localhost:8000/docs
 
 ## API 概览
 
