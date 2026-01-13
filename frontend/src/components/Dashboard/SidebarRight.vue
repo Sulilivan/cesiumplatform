@@ -19,7 +19,7 @@
           <!-- 当前时间的监测值（根据时间轴） -->
           <div class="section-title">
             <span class="title-icon">📍</span>
-            选中时间监测值
+            当前时间监测值
           </div>
           <div class="current-value-card">
             <div class="value-main">

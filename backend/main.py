@@ -553,8 +553,18 @@ def update_point(
     current_user: models.User = Depends(auth.get_current_admin_user),
     db: Session = Depends(get_db)
 ):
-    # 简单的验证，如果包含bind_model_id，也允许修改
-    db_point = crud.update_point(db, point_code=point_code, point_update=point_update.model_dump(exclude_unset=True))
+    # 使用 exclude_unset=False 来保留显式设置的 None 值（用于解绑操作）
+    # 这样前端传入 bind_model_id: null 时能正确清空数据库中的值
+    update_data = {}
+    for field, value in point_update.model_dump().items():
+        # 只包含在请求中明确传递的字段（包括 null 值）
+        if field in point_update.model_fields_set:
+            update_data[field] = value
+    
+    if not update_data:
+        raise HTTPException(status_code=400, detail="没有提供要更新的字段")
+    
+    db_point = crud.update_point(db, point_code=point_code, point_update=update_data)
     if not db_point:
         raise HTTPException(status_code=404, detail="测点不存在")
     return db_point

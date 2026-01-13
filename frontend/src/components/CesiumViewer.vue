@@ -170,13 +170,6 @@ const infoBoxPosition = reactive({ x: 0, y: 0 })
 const isBindingMode = ref(false)
 const bindingPointCode = ref(null)
 
-// 测点编号映射关系 (保留以兼容旧数据或硬编码部分，优先使用数据库绑定)
-const POINT_MAPPING = {
-  'PL1': 'IP1',
-  'IP2': 'IP2',
-  'IP3': 'IP3'
-}
-
 // 响应式状态管理
 const settings = reactive({
   lighting: true,
@@ -199,9 +192,16 @@ const fetchPoints = async () => {
 }
 
 const handleBindModel = (pointCode) => {
+    if (!pointCode) return
+    
+    const point = allPoints.value.find(p => p.point_code === pointCode)
+    if (point && point.bind_model_id) {
+        alert(`注意：测点 ${pointCode} 已绑定到构件 ${point.bind_model_id}。\n\n点击新的构件将会替换原有绑定。`)
+    }
+    
     isBindingMode.value = true
     bindingPointCode.value = pointCode
-    alert('进入绑定模式：请点击场景中的模型构件进行绑定')
+    alert('进入绑定模式：请点击场景中的模型构件进行绑定\n\n按 ESC 或点击空白处取消')
 }
 
 const handleUnbindModel = async (pointCode) => {
@@ -238,13 +238,23 @@ const handleUnbindModel = async (pointCode) => {
 }
 
 const handleSidebarSelect = (point) => {
+  // 如果点击的是已经选中的同一个测点，不做任何操作
+  if (point && selectedPoint.value && point.point_code === selectedPoint.value.point_code) {
+    return
+  }
+  
   selectedPoint.value = point
   selectedFeature.value = null // 清除构件选中
   highlightTileFeature(point)
   
+  // 辅助函数：检查是否为有效数字
+  const isValidNumber = (val) => typeof val === 'number' && !isNaN(val)
+  
   if (point) {
-    // 只有绑定了模型的测点才显示气泡和飞向
-    if (point.bind_model_id && viewerRef.value) {
+    // 只有绑定了模型且有有效坐标的测点才显示气泡和飞向
+    const hasValidCoords = isValidNumber(point.longitude) && isValidNumber(point.latitude)
+    
+    if (point.bind_model_id && viewerRef.value && hasValidCoords) {
         updateInfoBoxForPoint(point)
         // Calculate offset position: Move to North, Look South
         const offsetLat = 0.0005; 
@@ -254,7 +264,7 @@ const handleSidebarSelect = (point) => {
             destination: Cesium.Cartesian3.fromDegrees(
                 point.longitude, 
                 point.latitude + offsetLat,
-                (point.height || 0) + offsetHeight
+                (isValidNumber(point.height) ? point.height : 0) + offsetHeight
             ),
             orientation: {
                 heading: Cesium.Math.toRadians(180),
@@ -264,7 +274,7 @@ const handleSidebarSelect = (point) => {
             duration: 1.5
         });
     } else {
-        // 未绑定的测点：隐藏气泡，保持当前视角
+        // 未绑定或无有效坐标的测点：隐藏气泡，保持当前视角
         infoBoxVisible.value = false
         // 不重置视角，保持当前视角不变
     }
@@ -276,20 +286,8 @@ const handleSidebarSelect = (point) => {
 const highlightTileFeature = (point) => {
   if (!tilesetRef.value) return
 
-  
-  // 优先使用数据库中的绑定ID
+  // 使用数据库中的绑定ID（唯一来源）
   let targetModelId = point ? point.bind_model_id : null
-  
-  // 如果没绑定，尝试使用旧的映射
-  if (!targetModelId && point) {
-      targetModelId = point.point_code
-      for (const [key, val] of Object.entries(POINT_MAPPING)) {
-        if (val === point.point_code) {
-          targetModelId = key
-          break
-        }
-      }
-  }
 
   // 构建样式条件
   // 注意：如果 targetModelId 是 undefined，则不应高亮
@@ -352,8 +350,11 @@ const highlightUnboundFeature = (featureId, featureInfo) => {
 }
 
 const updateInfoBoxForPoint = (point) => {
-    if(viewerRef.value && point.longitude && point.latitude) {
-        const position = Cesium.Cartesian3.fromDegrees(point.longitude, point.latitude, point.height || 0)
+    const isValidNumber = (val) => typeof val === 'number' && !isNaN(val)
+    
+    if(viewerRef.value && isValidNumber(point.longitude) && isValidNumber(point.latitude)) {
+        const height = isValidNumber(point.height) ? point.height : 0
+        const position = Cesium.Cartesian3.fromDegrees(point.longitude, point.latitude, height)
         // 使用 updated API for newer Cesium versions or fallback
         const scene = viewerRef.value.scene;
         const canvasPosition = Cesium.SceneTransforms.worldToWindowCoordinates(scene, position);
@@ -362,6 +363,8 @@ const updateInfoBoxForPoint = (point) => {
             infoBoxPosition.y = canvasPosition.y - 50 
             infoBoxVisible.value = true
         }
+    } else {
+        infoBoxVisible.value = false
     }
 }
 
@@ -369,7 +372,16 @@ const updateInfoBoxPositionOnRender = () => {
     if (!selectedPoint.value || !infoBoxVisible.value || !viewerRef.value) return
     
     const point = selectedPoint.value
-    const position = Cesium.Cartesian3.fromDegrees(point.longitude, point.latitude, (point.height || 0))
+    const isValidNumber = (val) => typeof val === 'number' && !isNaN(val)
+    
+    // 检查坐标有效性
+    if (!isValidNumber(point.longitude) || !isValidNumber(point.latitude)) {
+        infoBoxVisible.value = false
+        return
+    }
+    
+    const height = isValidNumber(point.height) ? point.height : 0
+    const position = Cesium.Cartesian3.fromDegrees(point.longitude, point.latitude, height)
     // Use updated API
     const scene = viewerRef.value.scene;
     const canvasPosition = Cesium.SceneTransforms.worldToWindowCoordinates(scene, position);
@@ -520,6 +532,27 @@ onMounted(async () => {
                     };
                 }
 
+                // 一对一验证：检查该模型构件是否已被其他测点绑定
+                const existingBinding = allPoints.value.find(
+                    p => p.bind_model_id === finalFeatureId && p.point_code !== bindingPointCode.value
+                )
+                if (existingBinding) {
+                    alert(`绑定失败：该构件 ${finalFeatureId} 已被测点 ${existingBinding.point_code}（${existingBinding.point_name}）绑定。\n\n请先解除原有绑定，或选择其他构件。`)
+                    isBindingMode.value = false
+                    bindingPointCode.value = null
+                    return
+                }
+
+                // 检查当前测点是否已有绑定
+                const currentPoint = allPoints.value.find(p => p.point_code === bindingPointCode.value)
+                if (currentPoint && currentPoint.bind_model_id) {
+                    if (!confirm(`测点 ${bindingPointCode.value} 已绑定到构件 ${currentPoint.bind_model_id}。\n\n是否替换为新的绑定 ${finalFeatureId}？`)) {
+                        isBindingMode.value = false
+                        bindingPointCode.value = null
+                        return
+                    }
+                }
+
                 if (confirm(`确定将测点 ${bindingPointCode.value} 绑定到构件 ${finalFeatureId} 吗？`)) {
                     try {
                         const point = allPoints.value.find(p => p.point_code === bindingPointCode.value)
@@ -543,11 +576,21 @@ onMounted(async () => {
                         handleSidebarSelect(newPoint)
                     } catch (e) {
                         console.error(e)
-                        alert('绑定失败: ' + e.message)
+                        if (e.response && e.response.status === 403) {
+                            alert('绑定失败：权限不足，需要管理员账号')
+                        } else if (e.response && e.response.status === 401) {
+                            alert('绑定失败：登录已过期，请重新登录')
+                        } else {
+                            alert('绑定失败: ' + (e.response?.data?.detail || e.message))
+                        }
                     } finally {
                         isBindingMode.value = false
                         bindingPointCode.value = null
                     }
+                } else {
+                    // 用户取消绑定，退出绑定模式
+                    isBindingMode.value = false
+                    bindingPointCode.value = null
                 }
             } else {
                 alert('未识别到有效的构件ID，无法绑定')
@@ -558,28 +601,11 @@ onMounted(async () => {
         
         let targetPointCode = null;
 
-        // 0. 优先尝试通过数据库绑定的 ID 匹配
+        // 通过数据库绑定的 bind_model_id 匹配（唯一的匹配方式）
         if (finalFeatureId) {
              const boundPoint = allPoints.value.find(p => p.bind_model_id === finalFeatureId)
              if (boundPoint) {
                  targetPointCode = boundPoint.point_code
-             }
-        }
-
-        // 1. 尝试通过 ElementProxyCommonReference 匹配 (兼容旧)
-        if (!targetPointCode && refId && POINT_MAPPING[refId]) {
-             targetPointCode = POINT_MAPPING[refId];
-        } 
-        // 2. 如果没有直接匹配，尝试从 name_1 解析 (例如 "IP:IP2:253389" -> "IP2")
-        else if (!targetPointCode && name1) {
-             const parts = name1.split(':');
-             if (parts.length >= 2) {
-                 const potentialDetails = parts[1]; // 取中间部分
-                 if (POINT_MAPPING[potentialDetails]) {
-                     targetPointCode = POINT_MAPPING[potentialDetails];
-                 } else if (allPoints.value.find(p => p.point_code === potentialDetails)) {
-                     targetPointCode = potentialDetails;
-                 }
              }
         }
 
@@ -588,17 +614,17 @@ onMounted(async () => {
         if (targetPointCode) {
              const point = allPoints.value.find(p => p.point_code === targetPointCode);
              if (point) {
-                 // Toggle logic: If already selected, deselect. - 需求 1
+                 // 如果点击的是已经选中的测点，只取消选中，不飞视角
                  if (selectedPoint.value && selectedPoint.value.point_code === targetPointCode) {
                      handleSidebarSelect(null);
-                     if (window.resetView) window.resetView(); // 1. Deselect returns to default view
+                     // 不再调用 resetView()，保持当前视角
                  } else {
                      handleSidebarSelect(point);
                  }
              } else {
                  console.warn('找到代码但未找到测点数据:', targetPointCode);
                  handleSidebarSelect(null); // 清除选中
-                 if (window.resetView) window.resetView(); // 1. Unknown code returns to default view
+                 // 不再调用 resetView()，保持当前视角
              }
         } else {
              console.warn('未能匹配到测点代码，显示构件信息');
@@ -660,20 +686,10 @@ onMounted(async () => {
 
   // --- 添加北侧水体（下游大面积水域） - 支持动态高度 ---
   function addNorthWater(height = 1700) {
-    // 如果已存在水体，先移除并销毁
-    if (currentNorthWaterPrimitive) {
-      try {
-        const removed = viewer.scene.primitives.remove(currentNorthWaterPrimitive)
-        if (removed && !currentNorthWaterPrimitive.isDestroyed()) {
-          currentNorthWaterPrimitive.destroy()
-        }
-        console.log(`北侧旧水体移除: ${removed}`)
-      } catch (e) {
-        console.warn('移除北侧旧水体时出错:', e)
-      }
-      currentNorthWaterPrimitive = null
-    }
+    // 保存旧的水体引用
+    const oldPrimitive = currentNorthWaterPrimitive
     
+    // 先创建新的水体
     const waterPrimitive = new Cesium.Primitive({
       geometryInstances: new Cesium.GeometryInstance({
         geometry: new Cesium.PolygonGeometry({
@@ -704,30 +720,34 @@ onMounted(async () => {
         })
       })
     });
+    
+    // 先添加新水体
     viewer.scene.primitives.add(waterPrimitive);
     currentNorthWaterPrimitive = waterPrimitive
     northWaterHeight.value = height
+    
+    // 再删除旧水体（避免闪烁）
+    if (oldPrimitive) {
+      try {
+        const removed = viewer.scene.primitives.remove(oldPrimitive)
+        if (removed && !oldPrimitive.isDestroyed()) {
+          oldPrimitive.destroy()
+        }
+      } catch (e) {
+        console.warn('移除北侧旧水体时出错:', e)
+      }
+    }
+    
     viewer.scene.requestRender()
-    console.log(`下游水体已添加，高程: ${height}m`);
+    console.log(`下游水体已更新，高程: ${height}m`);
   }
 
   // --- 添加南侧水体（下游小面积水域） - 支持动态高度 ---
   function addSouthWater(height = 1900) {
-    // 如果已存在水体，先移除并销毁
-    if (currentSouthWaterPrimitive) {
-      try {
-        const removed = viewer.scene.primitives.remove(currentSouthWaterPrimitive)
-        // 如果移除成功且primitive未被销毁，则销毁它
-        if (removed && !currentSouthWaterPrimitive.isDestroyed()) {
-          currentSouthWaterPrimitive.destroy()
-        }
-        console.log(`旧水体移除: ${removed}`)
-      } catch (e) {
-        console.warn('移除旧水体时出错:', e)
-      }
-      currentSouthWaterPrimitive = null
-    }
+    // 保存旧的水体引用
+    const oldPrimitive = currentSouthWaterPrimitive
     
+    // 先创建新的水体
     const waterPrimitive = new Cesium.Primitive({
       geometryInstances: new Cesium.GeometryInstance({
         geometry: new Cesium.PolygonGeometry({
@@ -758,12 +778,26 @@ onMounted(async () => {
         })
       })
     });
+    
+    // 先添加新水体
     viewer.scene.primitives.add(waterPrimitive);
     currentSouthWaterPrimitive = waterPrimitive
     southWaterHeight.value = height
-    // 强制刷新场景以确保水体更新立即可见
+    
+    // 再删除旧水体（避免闪烁）
+    if (oldPrimitive) {
+      try {
+        const removed = viewer.scene.primitives.remove(oldPrimitive)
+        if (removed && !oldPrimitive.isDestroyed()) {
+          oldPrimitive.destroy()
+        }
+      } catch (e) {
+        console.warn('移除南侧旧水体时出错:', e)
+      }
+    }
+    
     viewer.scene.requestRender()
-    console.log(`下游水体已添加，高程: ${height}m`);
+    console.log(`上游水体已更新，高程: ${height}m`);
   }
   
   // 更新南侧水体高度（根据时间查找对应水位数据）
@@ -959,6 +993,24 @@ onMounted(async () => {
     }
 
   }, Cesium.ScreenSpaceEventType.MOUSE_MOVE)
+
+  // 键盘事件监听 - ESC 取消绑定模式
+  const handleKeydown = (e) => {
+    if (e.key === 'Escape' && isBindingMode.value) {
+      isBindingMode.value = false
+      bindingPointCode.value = null
+      alert('已退出绑定模式')
+    }
+  }
+  document.addEventListener('keydown', handleKeydown)
+  
+  // 清理函数
+  const cleanup = () => {
+    document.removeEventListener('keydown', handleKeydown)
+  }
+  
+  // 组件卸载时清理
+  window.addEventListener('beforeunload', cleanup)
 })
 </script>
 
