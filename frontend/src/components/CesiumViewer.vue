@@ -36,19 +36,33 @@ import DashboardLayer from './DashboardLayer.vue' // 引入仪表盘
 // 南侧水体（上游水位）相关状态
 const southWaterHeight = ref(1900) // 当前水面高程
 // 使用普通变量而非 ref，避免 Vue 响应式系统干扰 primitive 引用
-let currentSouthWaterPrimitive = null // 水体Primitive引用（普通变量）
+let currentSouthWaterPrimitive = null // 南侧水体Primitive引用（普通变量）
 const upstreamWaterLevelData = ref([]) // 上游水位历史数据
 const upstreamPointCode = ref(null) // 上游水位测点编号
 
-// 水位值到高程的映射配置
+// 北侧水体（下游水位）相关状态
+const northWaterHeight = ref(1700) // 当前水面高程
+let currentNorthWaterPrimitive = null // 北侧水体Primitive引用（普通变量）
+const downstreamWaterLevelData = ref([]) // 下游水位历史数据
+const downstreamPointCode = ref(null) // 下游水位测点编号
+
+// 上游水位值到高程的映射配置（南侧水体）
 // 高程范围：1792m ~ 1926m（共134米的变化范围，足够肉眼观察）
 const ELEVATION_MIN = 1792    // 高程最低值
 const ELEVATION_MAX = 1926    // 高程最高值
 const ELEVATION_RANGE = ELEVATION_MAX - ELEVATION_MIN  // 134米变化范围
 
+// 下游水位值到高程的映射配置（北侧水体）
+// 高程范围：1666m ~ 1737m（共71米的变化范围）
+const NORTH_ELEVATION_MIN = 1666    // 北侧高程最低值
+const NORTH_ELEVATION_MAX = 1737    // 北侧高程最高值
+const NORTH_ELEVATION_RANGE = NORTH_ELEVATION_MAX - NORTH_ELEVATION_MIN  // 71米变化范围
+
 // 水位测量值的参考范围（根据实际数据动态计算）
-let WATER_LEVEL_DATA_MIN = null  // 将从实际数据中计算
-let WATER_LEVEL_DATA_MAX = null  // 将从实际数据中计算
+let WATER_LEVEL_DATA_MIN = null  // 上游水位数据范围
+let WATER_LEVEL_DATA_MAX = null  
+let NORTH_WATER_LEVEL_DATA_MIN = null  // 下游水位数据范围
+let NORTH_WATER_LEVEL_DATA_MAX = null
 
 // 将水位值映射到高程
 // 使用线性映射：将水位值从[dataMin, dataMax]映射到高程[1792, 1926]
@@ -95,7 +109,49 @@ const calculateWaterLevelRange = (data) => {
   if (min !== Infinity && max !== -Infinity) {
     WATER_LEVEL_DATA_MIN = min
     WATER_LEVEL_DATA_MAX = max
-    console.log(`水位数据范围: ${min} ~ ${max}，映射到高程: ${ELEVATION_MIN} ~ ${ELEVATION_MAX}`)
+    console.log(`上游水位数据范围: ${min} ~ ${max}，映射到高程: ${ELEVATION_MIN} ~ ${ELEVATION_MAX}`)
+  }
+}
+
+// 将下游水位值映射到北侧水体高程
+// 使用线性映射：将水位值从[dataMin, dataMax]映射到高程[1666, 1737]
+const mapNorthWaterLevelToElevation = (waterLevel) => {
+  if (waterLevel === null || waterLevel === undefined) return NORTH_ELEVATION_MIN
+  
+  // 如果还没有计算出数据范围，使用中间高程
+  if (NORTH_WATER_LEVEL_DATA_MIN === null || NORTH_WATER_LEVEL_DATA_MAX === null) {
+    return Math.max(NORTH_ELEVATION_MIN, Math.min(NORTH_ELEVATION_MAX, waterLevel))
+  }
+  
+  const dataRange = NORTH_WATER_LEVEL_DATA_MAX - NORTH_WATER_LEVEL_DATA_MIN
+  if (dataRange < 0.01) {
+    return (NORTH_ELEVATION_MIN + NORTH_ELEVATION_MAX) / 2
+  }
+  
+  const normalizedValue = (waterLevel - NORTH_WATER_LEVEL_DATA_MIN) / dataRange
+  const elevation = NORTH_ELEVATION_MIN + normalizedValue * NORTH_ELEVATION_RANGE
+  
+  return Math.max(NORTH_ELEVATION_MIN, Math.min(NORTH_ELEVATION_MAX, elevation))
+}
+
+// 从下游水位数据中计算数据范围
+const calculateNorthWaterLevelRange = (data) => {
+  if (!data || data.length === 0) return
+  
+  let min = Infinity
+  let max = -Infinity
+  
+  for (const item of data) {
+    if (item.value !== null && item.value !== undefined) {
+      min = Math.min(min, item.value)
+      max = Math.max(max, item.value)
+    }
+  }
+  
+  if (min !== Infinity && max !== -Infinity) {
+    NORTH_WATER_LEVEL_DATA_MIN = min
+    NORTH_WATER_LEVEL_DATA_MAX = max
+    console.log(`下游水位数据范围: ${min} ~ ${max}，映射到高程: ${NORTH_ELEVATION_MIN} ~ ${NORTH_ELEVATION_MAX}`)
   }
 }
 
@@ -602,8 +658,22 @@ onMounted(async () => {
     viewer.scene.highDynamicRange = true
   }
 
-  // --- 添加北侧水体（上游大面积水域） ---
-  function addWater() {
+  // --- 添加北侧水体（下游大面积水域） - 支持动态高度 ---
+  function addNorthWater(height = 1700) {
+    // 如果已存在水体，先移除并销毁
+    if (currentNorthWaterPrimitive) {
+      try {
+        const removed = viewer.scene.primitives.remove(currentNorthWaterPrimitive)
+        if (removed && !currentNorthWaterPrimitive.isDestroyed()) {
+          currentNorthWaterPrimitive.destroy()
+        }
+        console.log(`北侧旧水体移除: ${removed}`)
+      } catch (e) {
+        console.warn('移除北侧旧水体时出错:', e)
+      }
+      currentNorthWaterPrimitive = null
+    }
+    
     const waterPrimitive = new Cesium.Primitive({
       geometryInstances: new Cesium.GeometryInstance({
         geometry: new Cesium.PolygonGeometry({
@@ -615,7 +685,7 @@ onMounted(async () => {
               101.580092, 28.400000
             ])
           ),
-          height: 1688
+          height: height
         })
       }),
       appearance: new Cesium.EllipsoidSurfaceAppearance({
@@ -635,7 +705,10 @@ onMounted(async () => {
       })
     });
     viewer.scene.primitives.add(waterPrimitive);
-    console.log('上游水体已添加 (Primitive + Water Material)');
+    currentNorthWaterPrimitive = waterPrimitive
+    northWaterHeight.value = height
+    viewer.scene.requestRender()
+    console.log(`下游水体已添加，高程: ${height}m`);
   }
 
   // --- 添加南侧水体（下游小面积水域） - 支持动态高度 ---
@@ -781,13 +854,95 @@ onMounted(async () => {
     }
   }
   
+  // 更新北侧水体高度（根据时间查找对应下游水位数据）
+  function updateNorthWaterByTime(targetTime) {
+    if (!downstreamWaterLevelData.value || downstreamWaterLevelData.value.length === 0) {
+      return
+    }
+    
+    const targetTimestamp = targetTime instanceof Date ? targetTime.getTime() : new Date(targetTime).getTime()
+    
+    let closestData = null
+    let minDiff = Infinity
+    
+    for (const data of downstreamWaterLevelData.value) {
+      const dataTime = new Date(data.time).getTime()
+      const diff = Math.abs(dataTime - targetTimestamp)
+      
+      if (diff < minDiff) {
+        minDiff = diff
+        closestData = data
+      }
+    }
+    
+    if (closestData) {
+      const newElevation = mapNorthWaterLevelToElevation(closestData.value)
+      addNorthWater(newElevation)
+      console.log(`下游水位更新: 时间=${new Date(closestData.time).toLocaleString()}, 水位值=${closestData.value}, 高程=${newElevation.toFixed(1)}m`)
+    }
+  }
+  
+  // 获取下游水位测点编号
+  async function fetchDownstreamPointCode() {
+    try {
+      const res = await api.get('/points/')
+      const points = res.data
+      // 查找下游水位测点
+      const downstreamPoint = points.find(p => 
+        p.device_type === '水位' && p.point_name && p.point_name.includes('下游')
+      )
+      if (downstreamPoint) {
+        downstreamPointCode.value = downstreamPoint.point_code
+        console.log('找到下游水位测点:', downstreamPoint.point_code)
+        return downstreamPoint.point_code
+      }
+      console.warn('未找到下游水位测点')
+      return null
+    } catch (e) {
+      console.error('获取测点列表失败:', e)
+      return null
+    }
+  }
+  
+  // 获取下游水位历史数据
+  async function fetchDownstreamWaterLevelData() {
+    if (!downstreamPointCode.value) {
+      await fetchDownstreamPointCode()
+    }
+    
+    if (!downstreamPointCode.value) return
+    
+    try {
+      const res = await api.get(`/water-level/${downstreamPointCode.value}?skip=0&limit=10000`)
+      downstreamWaterLevelData.value = res.data
+      console.log(`下游水位数据加载完成，共 ${res.data.length} 条记录`)
+      
+      // 计算水位数据范围，用于映射
+      calculateNorthWaterLevelRange(res.data)
+      
+      // 初始化时使用最新数据设置水位
+      if (res.data.length > 0) {
+        const latestData = res.data[0]
+        const initialElevation = mapNorthWaterLevelToElevation(latestData.value)
+        addNorthWater(initialElevation)
+        console.log(`下游初始水位: ${latestData.value}, 映射高程: ${initialElevation.toFixed(1)}m`)
+      } else {
+        addNorthWater(NORTH_ELEVATION_MIN)
+      }
+    } catch (e) {
+      console.error('获取下游水位数据失败:', e)
+      addNorthWater(NORTH_ELEVATION_MIN)
+    }
+  }
+  
   // 暴露更新函数供时间变化时调用
   window.updateSouthWaterByTime = updateSouthWaterByTime
+  window.updateNorthWaterByTime = updateNorthWaterByTime
 
-  // 执行添加水体
-  addWater();
   // 加载上游水位数据并初始化水体
   fetchUpstreamWaterLevelData();
+  // 加载下游水位数据并初始化水体
+  fetchDownstreamWaterLevelData();
 
   // 显示鼠标位置坐标
   const moveHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)

@@ -82,7 +82,14 @@ const onTimeChange = (newTime) => {
             if (window.updateSouthWaterByTime) {
                 window.updateSouthWaterByTime(newTime)
             } else {
-                console.warn('水位更新函数尚未初始化')
+                console.warn('上游水位更新函数尚未初始化')
+            }
+            
+            // 更新下游水位显示（北侧水体）
+            if (window.updateNorthWaterByTime) {
+                window.updateNorthWaterByTime(newTime)
+            } else {
+                console.warn('下游水位更新函数尚未初始化')
             }
         } catch (e) {
             console.error('Failed to sync time to Cesium:', e)
