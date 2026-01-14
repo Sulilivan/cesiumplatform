@@ -58,40 +58,27 @@ cesiumapartment/
 
 ---
 
-### 方式一：Docker 运行（推荐）
+### 方式一：Docker 一键运行（推荐，适合所有人）
 
-> 适合有 Docker 环境的用户，一键启动，无需配置环境。
+> 这是**最简单**的方法。只需要下载一个文件，即可在任何安装了 Docker 的电脑上运行。
 
-#### 环境要求
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) 已安装并运行
+#### 1. 下载配置文件
+只需要项目中的 [docker-compose.deploy.yml](docker-compose.deploy.yml) 文件。
 
-#### 启动步骤
-
+#### 2. 启动系统
+在终端运行：
 ```bash
-# 1. 进入项目根目录
-cd cesiumapartment
-
-# 2. 构建并启动所有服务（首次需要构建，较慢）
-docker-compose up --build
-
-# 或后台运行
-docker-compose up -d --build
+docker-compose -f docker-compose.deploy.yml up -d
 ```
 
-#### 访问地址
-- **前端界面**: http://localhost:5173
-- **后端 API 文档**: http://localhost:8000/docs
-
-#### 停止服务
-```bash
-docker-compose down
-```
+#### 3. 访问系统
+- **前端界面**: http://localhost:3000
+- **后端 API**: http://localhost:8000/docs
+- **默认账号**: `admin` / `admin123`
 
 ---
 
-### 方式二：本地运行（无需 Docker）
-
-> 适合没有 Docker 的用户，需要分别启动前端和后端。
+### 方式二：本地开发运行（适合需要修改代码的用户）
 
 #### 环境要求
 
@@ -167,62 +154,6 @@ npm run dev
   - 表格/图表双视图
   - 分页展示（50条/页）
   - 数据增删改查
-
-## Docker 部署
-
-### Docker Hub 镜像
-
-本项目已发布到 Docker Hub：
-
-| 镜像 | 地址 |
-|------|------|
-| 后端 | `rayansullivan/water-platform-backend` |
-| 前端 | `rayansullivan/water-platform-frontend` |
-
-### 快速拉取并运行
-
-```bash
-# 拉取镜像
-docker pull rayansullivan/water-platform-backend:latest
-docker pull rayansullivan/water-platform-frontend:latest
-
-# 运行后端
-docker run -d -p 8000:8000 --name water-backend rayansullivan/water-platform-backend:latest
-
-# 运行前端
-docker run -d -p 3000:3000 --name water-frontend rayansullivan/water-platform-frontend:latest
-```
-
-### 完整部署（推荐）
-
-使用 Docker Compose 进行完整部署：
-
-```yaml
-version: '3.8'
-services:
-  backend:
-    image: rayansullivan/water-platform-backend:latest
-    ports:
-      - "8000:8000"
-    volumes:
-      - water-db:/app/data
-    restart: unless-stopped
-
-  frontend:
-    image: rayansullivan/water-platform-frontend:latest
-    ports:
-      - "3000:3000"
-    depends_on:
-      - backend
-    restart: unless-stopped
-
-volumes:
-  water-db:
-```
-
-访问地址：
-- 前端界面: http://localhost:3000
-- 后端 API: http://localhost:8000/docs
 
 ## API 概览
 

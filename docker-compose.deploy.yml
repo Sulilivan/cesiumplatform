@@ -1,0 +1,32 @@
+# 智慧水利监测平台 - 远程部署配置
+# 使用方法: docker-compose -f docker-compose.deploy.yml up -d
+
+services:
+  # 后端 API 服务
+  backend:
+    image: rayansullivan/water-platform-backend:latest
+    container_name: water-backend-prod
+    ports:
+      - "8000:8000"
+    volumes:
+      # 将数据库持久化到当前目录下的 data 文件夹
+      - ./data:/app/data
+    restart: unless-stopped
+    networks:
+      - water-platform-network
+
+  # 前端服务
+  frontend:
+    image: rayansullivan/water-platform-frontend:latest
+    container_name: water-frontend-prod
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - water-platform-network
+
+networks:
+  water-platform-network:
+    driver: bridge
