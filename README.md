@@ -56,6 +56,15 @@ cesiumapartment/
 
 本项目支持两种运行方式：**Docker 运行**（推荐）和 **本地运行**。
 
+### 0. 获取项目
+
+首先，克隆本项目到本地：
+
+```bash
+git clone https://github.com/Sulilivan/cesiumapartment.git
+cd cesiumapartment
+```
+
 ---
 
 ### 方式一：Docker 一键运行（推荐，适合所有人）
